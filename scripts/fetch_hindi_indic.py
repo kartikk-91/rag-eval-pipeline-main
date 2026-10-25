@@ -1,4 +1,4 @@
-"""Fetch only bibliography entries whose paper license is verified as CC-BY 4.0.
+"""Fetch only bibliography entries with paper-specific terms cleared for local use.
 
 This downloads into data/hindi_indic/ and never replaces a file. Papers with
 unclear terms remain metadata-only/access-license-unclear until reviewed.
@@ -28,11 +28,20 @@ def fetchable(row: dict[str, str]) -> bool:
     if source_host != pdf_host:
         return False
     if source_host == "aclanthology.org":
-        return (
-            "ACL Anthology policy: CC-BY 4.0" in terms
+        acl_cc_by = (
+            (
+                "ACL Anthology FAQ: ACL-published 2016+ paper; CC-BY 4.0" in terms
+                or "ACL Anthology policy: CC-BY 4.0" in terms
+            )
             and "Association for Computational Linguistics" in terms
             and "publisher" in terms
         )
+        elra_noncommercial = (
+            "PDF first page verified: © ELRA, CC-BY-NC-4.0" in terms
+            and "local noncommercial research use only" in terms
+            and "do not redistribute" in terms
+        )
+        return acl_cc_by or elra_noncommercial
     if source_host == "arxiv.org":
         return "arXiv source record specifies CC-BY 4.0" in terms
     return False

@@ -53,5 +53,7 @@ select = ["E", "F", "I", "UP", "B"]
 # not be reflowed to satisfy a line limit.
 "scripts/corpus_sources.py" = ["E402", "E501"]
 "mcp_server/server.py" = ["E402"]
+# The single-file, self-contained browser showcase embeds its HTML/CSS/JS template.
+"api/main.py" = ["E501"]
 # Tests deliberately reach for private helpers — that is what they are testing.
 "tests/*.py" = ["E402"]

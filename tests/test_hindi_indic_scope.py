@@ -34,7 +34,7 @@ def test_claim_sentences_need_in_range_citations():
 
 def test_active_questions_are_source_first_and_labeled():
     examples = load_eval_set(Path(__file__).parents[1] / "evaluation" / "eval_set.jsonl")
-    assert len(examples) == 29
+    assert len(examples) == 45
     eval_path = Path(__file__).parents[1] / "evaluation" / "eval_set.jsonl"
     raw = [
         json.loads(line)
@@ -45,21 +45,21 @@ def test_active_questions_are_source_first_and_labeled():
     assert all("source_passage_checked_in_ingested_pdf" in r["question_review_status"] for r in raw)
     assert all("evidence_selected_before_retrieval" in r["question_review_status"] for r in raw)
     assert not any("relevant_chunk_ids" in r for r in raw)
-    assert len({r["gold_evidence"][0]["local_pdf"] for r in raw}) == 29
+    assert len({r["gold_evidence"][0]["local_pdf"] for r in raw}) == 45
 
 
 def test_hindi_indic_catalog_has_verified_scope_and_conservative_downloads():
     with MANIFEST.open(encoding="utf-8-sig", newline="") as stream:
         rows = list(csv.DictReader(stream))
 
-    assert len(rows) == 48
+    assert len(rows) == 59
     assert {row["status"] for row in rows} <= {
         "verified downloadable",
         "metadata only",
         "access/license unclear",
     }
     eligible = [row for row in rows if row["status"] == "verified downloadable"]
-    assert len(eligible) == 31
+    assert len(eligible) == 45
     assert all(fetchable(row) for row in eligible)
     assert not any(
         row["status"] != "verified downloadable" and fetchable(row) for row in rows

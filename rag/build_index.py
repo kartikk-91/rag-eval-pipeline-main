@@ -5,6 +5,7 @@ An earlier `search()` helper here was the second of five retrieval paths in the
 codebase and is deliberately gone (see docs/decisions/001-unified-retrieval-path.md).
 """
 
+import sys
 from typing import TYPE_CHECKING
 
 from qdrant_client import QdrantClient
@@ -61,6 +62,11 @@ def write_collection(client: QdrantClient, vectors, payloads: list[dict]) -> Non
 
 
 def main() -> None:
+    # Paper text often contains Unicode ligatures not representable in a default
+    # Windows console code page. Indexing can succeed and the diagnostic preview
+    # then fail while printing such a passage; use safe UTF-8 console output.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     client = make_client()
     chunks = load_chunks()
     if not chunks:

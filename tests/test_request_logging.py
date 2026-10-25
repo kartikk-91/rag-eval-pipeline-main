@@ -81,11 +81,15 @@ def pipeline(monkeypatch):
     """Install stubs for retrieval and Bedrock; return the captured log lines."""
     import api.main
     import rag.generate as gen
+    from rag import tracing
 
     # The rate limiter's window is process memory shared by every test in the run,
     # and the suite sends more than RATE_LIMIT_PER_MIN questions from one client.
     # Without this, the next test added anywhere turns a 200 here into a 429.
     api.main._hits.clear()
+    # The fixture stubs all upstream calls. Do not let a developer's optional
+    # SSM tracing prefix make an AWS request during an offline unit test.
+    monkeypatch.setattr(tracing, "client", lambda: None)
     captured = _Lines()
     telemetry.logger.addHandler(captured)
 

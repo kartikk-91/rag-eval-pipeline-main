@@ -127,7 +127,11 @@ def test_no_chunks_answers_without_calling_the_model(bedrock):
 def api(monkeypatch):
     """A TestClient whose retrieval is stubbed, so only generation can fail."""
     import rag.generate as gen
+    from rag import tracing
 
+    # These request-path tests must never fall through to a developer's SSM
+    # tracing configuration; tracing behavior is covered separately in test_tracing.
+    monkeypatch.setattr(tracing, "client", lambda: None)
     monkeypatch.setattr(gen, "retrieve_chunks", lambda q, k: [_chunk()])
     from api.main import app
 

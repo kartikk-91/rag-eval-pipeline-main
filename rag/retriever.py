@@ -16,19 +16,23 @@ from rag.types import Chunk
 
 
 class DenseRetriever:
-    def __init__(self) -> None:
+    def __init__(self, *, load_model: bool = True) -> None:
         # Imported here, not at module scope: it pulls in torch, ~13.5s. At module
         # scope it was paid while Lambda imported the handler, which pushed init past
         # Lambda's 10s init limit on every cold start — the init timed out, its 10s
         # were thrown away, and the whole import ran again inside the request
         # (docs/decisions/017). CLAUDE.md already said this; this file did not obey it.
-        from sentence_transformers import SentenceTransformer
+        self._model = None
+        if load_model:
+            from sentence_transformers import SentenceTransformer
 
-        self._model = SentenceTransformer(MODEL_NAME)
+            self._model = SentenceTransformer(MODEL_NAME)
         self._client = make_client()
 
     def retrieve_chunks(self, query: str, k: int) -> list[Chunk]:
         """Return up to k chunks, ranked best-first. The only Qdrant query in the codebase."""
+        if self._model is None:
+            raise RuntimeError("Dense retrieval requires DenseRetriever(load_model=True).")
         vector = self._model.encode(query, normalize_embeddings=True).tolist()
         hits = self._client.query_points(
             collection_name=COLLECTION, query=vector, limit=k

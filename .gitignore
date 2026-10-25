@@ -234,3 +234,7 @@ crash.log
 # tfvars hold account-specific values (and sometimes secrets)
 *.auto.tfvars
 terraform.tfvars
+
+# Local generated Hindi/Indic indexes and test scratch
+qdrant_hindi_indic_showcase_*/
+.pytest-tmp-*/

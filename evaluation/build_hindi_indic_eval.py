@@ -236,7 +236,108 @@ CASES = [
         "We present the IndicNLG Benchmark, a collection of datasets for benchmarking NLG for 11 Indic languages.",
         "IndicNLG covers 11 Indic languages.",
     ),
+    (
+        "3",
+        "transmucores-hindi-coreference",
+        "What resources are combined to train the Hindi coreference models in TransMuCoRes?",
+        "Using multilingual encoders, two off-the-shelf coreference resolution models were trained on a concatenation of TransMuCoRes and a Hindi coreference resolution dataset with manual annotations.",
+        "The systems combine TransMuCoRes with a manually annotated Hindi coreference dataset and multilingual encoders.",
+    ),
+    (
+        "17",
+        "hiner-dataset-size",
+        "How large is the HiNER Hindi named-entity dataset?",
+        "This paper releases a significantly sized standard-abiding Hindi NER dataset containing 109,146 sentences and 2,220,856 tokens, annotated with 11 tags.",
+        "HiNER contains 109,146 Hindi sentences and 2,220,856 tokens with 11 tags.",
+    ),
+    (
+        "40",
+        "hindi-timebank-annotations",
+        "What kinds of information are annotated in the Hindi TimeBank?",
+        "In this paper, we present the Hindi TimeBank, an ISO-TimeML annotated reference corpus for the detection and classification of events, states and time expressions, and the links between them.",
+        "Hindi TimeBank annotates events, states, time expressions, and their links using an ISO-TimeML-based schema.",
+    ),
+    (
+        "49",
+        "hindi-beir-scope",
+        "How many datasets and tasks does Hindi-BEIR cover?",
+        "To address this gap, we introduce the Hindi-BEIR benchmark, comprising 15 datasets across seven distinct tasks.",
+        "Hindi-BEIR comprises 15 datasets across seven tasks.",
+    ),
+    (
+        "50",
+        "indicgenbench-tasks",
+        "Which types of generation tasks are included in IndicGenBench?",
+        "INDIC GENBENCH is composed of diverse generation tasks like cross-lingual summarization, machine translation, and cross-lingual question answering.",
+        "IndicGenBench includes cross-lingual summarization, machine translation, and cross-lingual question answering.",
+    ),
+    (
+        "51",
+        "naamapadam-data-coverage",
+        "What languages and entity types does Naamapadam cover?",
+        "The dataset contains more than 400k sentences annotated with a total of at least 100k entities from three standard entity categories (Person, Location, and, Organization) for 9 out of the 11 languages.",
+        "Naamapadam covers 9 languages with more than 400,000 sentences and Person, Location, and Organization entities.",
+    ),
+    (
+        "52",
+        "comumdr-modalities",
+        "What modalities and annotations are included in CoMuMDR?",
+        "The corpus (code-mixed in Hindi and English) has both audio and transcribed text and is annotated with nine discourse relations.",
+        "CoMuMDR includes Hindi-English code-mixed audio, transcripts, and nine discourse-relation labels.",
+    ),
+    (
+        "54",
+        "hindi-continued-pretraining",
+        "What training approach is used for Nemotron-Mini-Hindi 4B?",
+        "The model is trained using a mix of real and synthetic Hindi + English tokens, with continuous pre-training performed on 400B tokens.",
+        "Nemotron-Mini-Hindi 4B is continually pretrained on 400 billion real and synthetic Hindi-English tokens.",
+    ),
+    (
+        "56",
+        "iltur-language-coverage",
+        "Which language settings are included in the IL-TUR legal benchmark?",
+        "IL-TUR contains monolingual (English, Hindi) and multi-lingual (9 Indian languages) domain-specific tasks that address different aspects of the legal system from the point of view of understanding and reasoning over Indian legal documents.",
+        "IL-TUR includes English and Hindi monolingual tasks and multilingual tasks across nine Indian languages.",
+    ),
+    (
+        "57",
+        "hindi-syntax-evaluation",
+        "Which languages are used for the controlled syntax tests in this study?",
+        "In this study, we develop targeted syntactic evaluation tests for three low-resource languages (Basque, Hindi, and Swahili) and use them to evaluate five families of open-access multilingual Transformer LMs.",
+        "The study tests Basque, Hindi, and Swahili with five families of multilingual Transformer models.",
+    ),
+    (
+        "58",
+        "hindi-verb-alternation-benchmark",
+        "What linguistic properties does the Hindi verb-alternation benchmark test?",
+        "We create four variants of these alternations for Hindi to test knowledge of verbal morphology and argument case-marking.",
+        "The benchmark's four variants test Hindi verbal morphology and argument case marking.",
+    ),
+    (
+        "59",
+        "corefud-shared-task-scale",
+        "How many datasets and languages are represented in the CRAC 2024 shared-task data?",
+        "The training and evaluation data were drawn from version 1.2 of the multilingual collection of harmonized coreference resources CorefUD, encompassing 21 datasets across 15 languages.",
+        "The shared-task data uses 21 CorefUD datasets across 15 languages.",
+    ),
+    (
+        "60",
+        "cost-hindi-translation-domains",
+        "Which kinds of text does the CoST suite use to evaluate English-Hindi translation?",
+        "we curated a comprehensive test suite encompassing diverse datasets across various categories, including autobiography, poetry, legal, conversation, play, narration, technical, and mixed genres.",
+        "The CoST suite evaluates autobiography, poetry, legal, conversational, theatrical, narrative, technical, and mixed-genre text.",
+    ),
+    (
+        "61",
+        "aima-conversation-context",
+        "What context does the AIMA system use for code-mixed emotion recognition?",
+        "we propose a series of models that incorporate both the previous and future context of the current utterance, as well as the sequential information of the conversation.",
+        "AIMA uses preceding and following utterance context and conversation sequence information.",
+    ),
 ]
+
+if len({case[0] for case in CASES}) != len(CASES):
+    raise ValueError("Evaluation cases must not contain more than one question per source PDF.")
 
 
 def main() -> None:

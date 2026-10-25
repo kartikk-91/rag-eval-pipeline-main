@@ -4,9 +4,11 @@ A reproducible retrieval-augmented QA project over research papers, now scoped a
 
 ## Corpus status
 
-`scripts/hindi_indic_papers.csv` contains 48 scoped records with authors, year, topic, rationale, primary-source/PDF URLs, license notes, and access status. Thirty-one records are currently eligible for paper-PDF download under verified CC-BY 4.0 terms; 29 PDFs are present in `data/hindi_indic/` and two eligible downloads failed because DNS/network access to ACL Anthology was unavailable in this environment. Seventeen additional records remain metadata-only or have unclear/non-redistributable terms. The fetcher skips uncleared records, checks HTTPS/PDF responses, reports missing/failed downloads, and never overwrites existing files. ACL's policy covers ACL materials only and excludes third-party material; the CSV distinguishes ACL-published works from papers merely hosted in the Anthology. The old 39 PDFs were removed at the user's request; no backup was retained.
+`scripts/hindi_indic_papers.csv` contains 59 source-linked records. Forty-five PDFs are present locally in `data/hindi_indic/`: 42 ACL-published papers with verified CC-BY 4.0 terms and three ELRA papers whose PDFs explicitly state CC-BY-NC-4.0. The ELRA files are for local noncommercial coursework/research only and must not be redistributed. Fourteen additional records are metadata-only because access or paper-specific terms remain unclear. The downloader checks source host, HTTPS, PDF signature, and license note; it never overwrites an existing file. The `data/` directory is ignored by Git.
 
-The active evaluation set (`evaluation/eval_set.jsonl`) has 29 source-first questions, one per local PDF. Each evidence passage was selected from its source paper before retrieval and checked against chunks from that same ingested PDF without using the retriever to choose gold evidence. On the current 1,109-chunk index, hybrid retrieval has recall@10 0.483 and MRR@10 0.245; all gold passages are reachable by rank 100. This is an initial baseline: one abstract-based question per paper is small and may favor lexical matching, and manual answer/citation review remains pending. A paired comparison is available with `python -m evaluation.compare_retrievers --system bm25 --system hybrid`; on this set BM25 alone scored higher than hybrid, but query diversity should be expanded before changing defaults. Rebuild the index after corpus changes. The former Bengali-focused set is preserved at `evaluation/legacy_bengali_eval_set.jsonl`; its labels and scores do not apply to this corpus. Keep the two unavailable-paper gaps visible in reports.
+The active `evaluation/eval_set.jsonl` contains 45 unique source-first questions, one per local PDF. Passages are selected directly from their source PDFs before retrieval, then checked against that PDF's ingested chunks. Retriever output is not used to select gold evidence. Answer and claim-to-passage review is still pending; questions are explicitly marked in the JSONL. The current retrieval snapshot describes this 45-paper, 1,686-chunk index and 45-question set. Earlier 29-paper scores are superseded and do not apply to this corpus. The Bengali-era labels remain in `evaluation/legacy_bengali_eval_set.jsonl` for historical reference only. The original 39 Bengali-era PDFs were removed at the user's request; there was no retained backup.
+
+The curated set centers on Hindi coreference and anaphora (including DeepHCoref, TransMuCoRes, and the Hindi annotation work), multilingual coreference evaluation (including MCECR), and supporting Hindi/Indic research on retrieval, QA, language models, NER, POS, parsing, syntax, code-mixing, machine translation, and benchmarks. Source pages and inclusion rationales are recorded per row. A paper page being public does not by itself establish permission to redistribute its PDF or accompanying datasets.
 
 ## Setup: Windows PowerShell
 
@@ -20,8 +22,9 @@ python -m pip install -e ".[dev]"
 python scripts\fetch_hindi_indic.py --dry-run
 python scripts\fetch_hindi_indic.py
 $env:RAG_DATA_DIR = "data/hindi_indic"
-$env:QDRANT_PATH = "qdrant_hindi_indic_research"
-$env:RAG_COLLECTION = "hindi_indic_research"
+$env:QDRANT_PATH = "qdrant_hindi_indic_showcase_20261025_v2"
+$env:RAG_COLLECTION = "hindi_indic_showcase_20261025_v2"
+$env:RAG_S3_BUCKET = ""
 python -m evaluation.build_hindi_indic_eval
 python -m rag.build_index
 python -m evaluation.run_eval
@@ -35,14 +38,27 @@ To run the API locally after building an index:
 
 ```powershell
 $env:RAG_DATA_DIR = "data/hindi_indic"
-$env:QDRANT_PATH = "qdrant_hindi_indic_research"
-$env:RAG_COLLECTION = "hindi_indic_research"
-$env:AWS_REGION = "eu-central-1"
-$env:BEDROCK_MODEL_ID = "eu.amazon.nova-lite-v1:0"
+$env:QDRANT_PATH = "qdrant_hindi_indic_showcase_20261025_v2"
+$env:RAG_COLLECTION = "hindi_indic_showcase_20261025_v2"
 python -m uvicorn api.main:app --reload
 ```
 
 The `/ask` route calls Bedrock, which can incur charges and is intentionally not called by setup, tests, ingestion, indexing, or CI. Configure AWS access through your organization's approved environment/identity mechanism before using `/ask`; do not put credentials in `.env`, source files, logs, or commits. Region and model are configurable with `AWS_REGION` and `BEDROCK_MODEL_ID`.
+
+## Browser showcase for a presentation
+
+The repository includes a browser-based **Indic Research Desk** with three views: evidence search, a filterable paper library, and an evaluation dashboard. Search displays the exact retrieved passage beside its paper, section, and citation. The default BM25 search is local and does not call AWS or a paid model. The evaluation dashboard shows current retrieval metrics and labels them as retrieval results, not answer-faithfulness scores.
+
+After the index setup below completes, start the platform from PowerShell:
+
+```powershell
+$env:RAG_DATA_DIR = "data/hindi_indic"
+$env:QDRANT_PATH = "qdrant_hindi_indic_showcase_20261025_v2"
+$env:RAG_COLLECTION = "hindi_indic_showcase_20261025_v2"
+python -m uvicorn api.main:app --reload
+```
+
+Open **http://127.0.0.1:8000** in a browser. Search examples are drawn from the measured source-first evaluation set. If the local showcase index exists and you have not configured a Qdrant target, the API selects that embedded index automatically; explicit Qdrant environment settings take precedence. The optional hybrid selector loads the multilingual embedding model. The `/ask` endpoint is a separate optional Bedrock feature and is not needed for the presentation demo.
 
 ## Setup: Linux/macOS
 
@@ -54,8 +70,9 @@ python -m pip install -e '.[dev]'
 python scripts/fetch_hindi_indic.py --dry-run
 python scripts/fetch_hindi_indic.py
 export RAG_DATA_DIR=data/hindi_indic
-export QDRANT_PATH=qdrant_hindi_indic_research
-export RAG_COLLECTION=hindi_indic_research
+export QDRANT_PATH=qdrant_hindi_indic_showcase_20261025_v2
+export RAG_COLLECTION=hindi_indic_showcase_20261025_v2
+unset RAG_S3_BUCKET
 python -m evaluation.build_hindi_indic_eval
 python -m rag.build_index
 python -m evaluation.run_eval
@@ -75,7 +92,7 @@ Generation receives passages labeled `[S1]`, `[S2]`, and so on, and is instructe
 |---|---|---|
 | `RAG_DATA_DIR` | `data/hindi_indic` | Local PDF directory |
 | `RAG_EMBEDDING_MODEL` | multilingual MiniLM L12 v2 | Query/document embedding model |
-| `RAG_COLLECTION` | `hindi_indic_documents` | Qdrant collection (setup uses `hindi_indic_research`) |
+| `RAG_COLLECTION` | `hindi_indic_documents` | Qdrant collection (presentation setup uses `hindi_indic_showcase_20261025_v2`) |
 | `QDRANT_PATH` | unset | Embedded local Qdrant path; set for local development |
 | `QDRANT_HOST`, `QDRANT_PORT` | `localhost`, `6333` | Qdrant server when embedded path is unset |
 | `AWS_REGION` | `eu-central-1` | Bedrock region, when generating answers |
@@ -86,7 +103,7 @@ Deployment files in `infra/` describe AWS resources, but this task did not deplo
 
 ## Evaluation and checks
 
-Retrieval metrics can only run after the new legal PDFs are present and indexed. For passage-based examples, evaluation checks whether the gold passage text appears in the actual retrieved chunk; source identity alone is insufficient. Old chunk IDs, snapshots, baselines, robustness labels, and faithfulness judgments are legacy artifacts, not evidence for the new collection.
+The active 45-case evaluation checks the gold passage text against actual retrieved chunks; returning a matching paper title alone is not a hit. Old chunk IDs, vector snapshots, robustness labels, and Bengali-era faithfulness judgments are legacy artifacts, not evidence for the current corpus. The active snapshot contains current 45-paper retrieval results. After corpus changes, rebuild the index, rerun `python -m evaluation.run_eval` and `python -m evaluation.compare_retrievers --system bm25 --system hybrid`, and report corpus and question counts with any numbers.
 
 Run offline checks with:
 
