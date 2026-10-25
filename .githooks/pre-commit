@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Shared pre-commit checks. Enable once per clone:  git config core.hooksPath .githooks
+#
+# Deliberately fast (~3s). The full suite, including integration tests that need
+# Qdrant, runs in CI — a hook people disable because it is slow protects nothing.
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+PY=.venv/bin/python
+[ -x "$PY" ] || PY=python3
+fail=0
+
+echo "pre-commit: fast tests"
+if ! "$PY" -m pytest tests/ -q -m "not integration" >/tmp/pc-tests.log 2>&1; then
+    tail -20 /tmp/pc-tests.log
+    fail=1
+fi
+
+echo "pre-commit: duplicate dict keys (staged .py)"
+if ! "$PY" - <<'PYEOF'
+# Checks the STAGED content of staged .py files only. Two reasons: a pre-commit
+# hook should judge what is being committed, not the working tree; and globbing
+# the whole tree walked 15,375 files to reach 24 real ones, most of them .venv.
+import ast, subprocess, sys
+
+files = subprocess.run(
+    ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM", "--", "*.py"],
+    capture_output=True, text=True, check=True,
+).stdout.split()
+
+bad = False
+for f in files:
+    src = subprocess.run(["git", "show", f":{f}"], capture_output=True, text=True).stdout
+    try:
+        tree = ast.parse(src)
+    except SyntaxError as e:
+        print(f"{f}:{e.lineno}: syntax error: {e.msg}")
+        bad = True
+        continue
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            keys = [k.value for k in node.keys if isinstance(k, ast.Constant)]
+            dupes = {k for k in keys if keys.count(k) > 1}
+            if dupes:
+                print(f"{f}:{node.lineno}: duplicate dict key(s): {sorted(dupes)}")
+                bad = True
+sys.exit(1 if bad else 0)
+PYEOF
+then
+    fail=1
+fi
+
+echo "pre-commit: decision-record references (staged)"
+if ! "$PY" - <<'PYEOF'
+# Four times now a docs/decisions/NNN reference has pointed at a record that did
+# not exist, or at the wrong one after a number was taken by another release. The
+# pointer looks right in review; only opening it reveals the drift. Checks staged
+# content, like the dict-key check above.
+import pathlib, re, subprocess, sys
+
+records = {p.name for p in pathlib.Path("docs/decisions").glob("*.md")}
+numbers = {name[:3] for name in records}
+
+files = subprocess.run(
+    ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+    capture_output=True, text=True, check=True,
+).stdout.split()
+
+bad = False
+for f in files:
+    if not f.endswith((".md", ".json", ".tf", ".py")):
+        continue
+    src = subprocess.run(["git", "show", f":{f}"], capture_output=True, text=True).stdout
+    for num, rest in re.findall(r"docs/decisions/(\d{3})([\w./-]*)", src):
+        if num not in numbers:
+            print(f"{f}: docs/decisions/{num} does not exist")
+            bad = True
+        elif rest.endswith(".md") and (num + rest).split("/")[-1] not in records:
+            print(f"{f}: docs/decisions/{num}{rest} is not the name of record {num}")
+            bad = True
+sys.exit(1 if bad else 0)
+PYEOF
+then
+    fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+    echo
+    echo "pre-commit FAILED. Fix, or bypass deliberately with: git commit --no-verify"
+    exit 1
+fi
+echo "pre-commit: ok"

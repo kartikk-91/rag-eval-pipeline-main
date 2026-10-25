@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars and fill in. That file is gitignored: it holds
+# account-specific values.
+
+alert_email = "you@example.com"
+
+# Set to the git SHA of the image you pushed, so a running deployment is
+# traceable to a commit rather than to whatever "latest" happened to mean.
+# image_tag = "a9ddabf"

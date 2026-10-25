@@ -1,0 +1,42 @@
+{"query": "What is the BenCoref dataset?", "relevant_chunk_ids": ["ea08045b29dc", "684e6cc4b1e0"]}
+{"query": "What is the main contribution of the end-to-end neural coreference resolution model?", "relevant_chunk_ids": ["a8d9befd646e", "d97b0c99901d"]}
+{"query": "How does SpanBERT change BERT's pre-training objective?", "relevant_chunk_ids": ["53709eb98573", "fbbd062b3389"]}
+{"query": "What is MuRIL and what languages was it pre-trained on?", "relevant_chunk_ids": ["289b7b167a5d", "f6d8372b6544"]}
+{"query": "What is the mGAP dataset?", "relevant_chunk_ids": ["f31ed0a70077", "ca696faaead2"]}
+{"query": "What two models does the Bridge the GAP paper propose for coreference resolution?", "relevant_chunk_ids": ["6d5d72f8eced"]}
+{"query": "What dataset is Bangla-BERT pre-trained on and how large is it?", "relevant_chunk_ids": ["a26ee6c735ea"]}
+{"query": "What does the paper 'What Would ELSA Do?' investigate about transformer fine-tuning?", "relevant_chunk_ids": ["4406f3cde643", "6f834fb6e23d"]}
+{"query": "What does the BanglaBERT paper propose for low-resource Bangla language understanding?", "relevant_chunk_ids": ["fde22cf8e95b", "06187866a2e1"]}
+{"query": "How is the multilingual coreference dataset for South Asian languages created?", "relevant_chunk_ids": ["c4e405dc47e9", "b3ca1ba16609"]}
+{"query": "Which three issues undermined the CoNLL shared-task coreference evaluations?", "relevant_chunk_ids": ["e33b28757983"]}
+{"query": "How do the corpora in CorefUD differ in the way they annotate bridging relations?", "relevant_chunk_ids": ["76a0a3d0341f"]}
+{"query": "Why do different candidate noun-phrase extraction methods yield different numbers of mentions?", "relevant_chunk_ids": ["021207ab226d"]}
+{"query": "What does a low training loss on synthetic data suggest about how much the model learns from it?", "relevant_chunk_ids": ["8a1e4b42dfec"]}
+{"query": "What supervised cross-lingual signal was added to MuRIL's training data?", "relevant_chunk_ids": ["289b7b167a5d"]}
+{"query": "Which objective functions does SBERT use during training?", "relevant_chunk_ids": ["5be190a36fbe"]}
+{"query": "What data-augmentation mechanism does KnowRef introduce and what is it meant to encourage?", "relevant_chunk_ids": ["cc5fe8a0a816"]}
+{"query": "How can the coreference component's performance be separated from mention detection errors?", "relevant_chunk_ids": ["ec34276a1d57"]}
+{"query": "What zero-shot part-of-speech accuracy does multilingual BERT reach across European language pairs?", "relevant_chunk_ids": ["f80b90b12d43"]}
+{"query": "Why has data augmentation been adopted less in NLP than in computer vision?", "relevant_chunk_ids": ["b7e36f28d838"]}
+{"query": "How does a contrastive training objective change the singular value distribution of sentence embeddings?", "relevant_chunk_ids": ["f96736391e42"]}
+{"query": "What is the selffer control network and how is it built?", "relevant_chunk_ids": ["ea0af3e89e51"]}
+{"query": "Which coreference metric is unaffected by the mention identification effect, and what does it cost?", "relevant_chunk_ids": ["971effda4c31"]}
+{"query": "What are probing tasks used for when analysing contextualized word representations?", "relevant_chunk_ids": ["fa415e044293"]}
+{"query": "Which algorithm finds the optimal entity alignment when computing CEAF?", "relevant_chunk_ids": ["795936f6256b"]}
+{"query": "Does improving word alignment quality help cross-lingual NER when English labels are projected onto another language?", "relevant_chunk_ids": ["5a3c0101956d"]}
+{"query": "When fine-tuning a pretrained language model for classification, does adapting the language model itself matter more on large or small datasets?", "relevant_chunk_ids": ["899444ed79c4"]}
+{"query": "What makes BERT's pre-training deeply bidirectional, unlike earlier language representation models?", "relevant_chunk_ids": ["808d20bde576"]}
+{"query": "Which kinds of anaphoric reference have been neglected by coreference research despite the field's overall progress?", "relevant_chunk_ids": ["8ff5b406f9c4"]}
+{"query": "How does ELECTRA compare with RoBERTa and XLNet on SQuAD once training compute is taken into account?", "relevant_chunk_ids": ["fc593a5fd011"]}
+{"query": "Are transfer learning and distant supervision competing or complementary approaches for low-resource languages?", "relevant_chunk_ids": ["976f4f628f5e"]}
+{"query": "Were external knowledge resources such as WordNet permitted in the closed track of the CoNLL coreference shared task?", "relevant_chunk_ids": ["d35981b51368"]}
+{"query": "What tokenizer does XLM-R use, and does it rely on language embeddings to tell languages apart?", "relevant_chunk_ids": ["db66563a395c"]}
+{"query": "What accuracy did the rule-based Bangla parser reach on word ambiguity, and what held it back?", "relevant_chunk_ids": ["69864c88a699"]}
+{"query": "Does easy data augmentation help more when the training set is small?", "relevant_chunk_ids": ["3583449ad7de"]}
+{"query": "How much BLEU did adding monolingual data with synthetic source sentences gain for German-English on WMT15?", "relevant_chunk_ids": ["79f5177c0894"]}
+{"query": "Which back-translation generation methods require upsampling the real bitext during training, and which do not?", "relevant_chunk_ids": ["247b12b4bd1c"]}
+{"query": "Has anyone studied parameter-efficient fine-tuning for text classification in a low-resource Indic language?", "relevant_chunk_ids": ["ef154a78e952"]}
+{"query": "What is the Bayesian justification for elastic weight consolidation?", "relevant_chunk_ids": ["73fbcf627ecb"]}
+{"query": "Is it better to spend embedding parameters on the input side or the output side of a pretrained model?", "relevant_chunk_ids": ["2634f9ebd835"]}
+{"query": "How many languages do mBERT and XLM-R actually cover, and which language families are left out?", "relevant_chunk_ids": ["6ec15026c7d5"]}
+{"query": "What problem with static word vectors motivated contextualized word representations?", "relevant_chunk_ids": ["23e401d7e3a8"]}

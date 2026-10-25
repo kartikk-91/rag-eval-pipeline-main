@@ -1,0 +1,61 @@
+{
+  "_comment": "Archived Bengali-era retrieval baseline. Not applicable to the Hindi/Indic corpus; comparison and update command are disabled.",
+  "corpus": {
+    "papers": 48,
+    "chunks": 1688
+  },
+  "eval_set": {
+    "path": "evaluation/legacy_bengali_eval_set.jsonl",
+    "questions": 42
+  },
+  "metrics": {
+    "mrr": 0.578,
+    "mrr_k": 10,
+    "recall_at_k": {
+      "1": 0.393,
+      "3": 0.583,
+      "5": 0.667,
+      "10": 0.774,
+      "20": 0.869,
+      "50": 0.917,
+      "100": 0.94
+    },
+    "hit_rate_at_k": {
+      "1": 0.476,
+      "3": 0.643,
+      "5": 0.714,
+      "10": 0.81,
+      "20": 0.881,
+      "50": 0.929,
+      "100": 0.952
+    },
+    "ndcg_at_k": {
+      "1": 0.476,
+      "3": 0.527,
+      "5": 0.564,
+      "10": 0.598
+    }
+  },
+  "tolerance": 0.03,
+  "recorded": "2026-10-14",
+  "note": "First baseline on the frozen 42-question set (10 original + 32 hand-verified, chunk-first; 50 gold chunks over 37 of the 48 papers). Supersedes the 10-question directional baseline. MRR is truncated at max(k_values), so it is MRR@10 here and rises to 0.584 when k=100 is scored - always quote it with its depth. Headline finding: recall@1 0.393 vs recall@20 0.869 means most gold material IS retrieved but ranked badly, so reranking is the main lever; but recall@100 0.940 leaves ~6% of gold chunks unreachable at any practical depth, which is a genuine coverage gap and revives the case for hybrid retrieval. The reranking-vs-coverage argument that follows from these numbers is recorded in docs/decisions/008. Added nDCG@k and bootstrap intervals. The 95% intervals are ~0.23-0.26 wide, an order of magnitude more than this file's +/-3% tolerance: that tolerance guards against a change in THIS measurement, and says nothing about how the figure would move on another 42 questions. Treat a reranker's absolute numbers accordingly and judge it on bootstrap_delta_ci over the same queries.",
+  "confidence_intervals_95": {
+    "_comment": "Percentile bootstrap over queries, seeded. Width is how much each figure depends on WHICH 42 questions were asked. Compare two retrievers with bootstrap_delta_ci on the same questions, not by checking whether these overlap.",
+    "recall_at_1": [
+      0.262,
+      0.524
+    ],
+    "recall_at_10": [
+      0.655,
+      0.881
+    ],
+    "mrr": [
+      0.448,
+      0.705
+    ],
+    "ndcg_at_10": [
+      0.48,
+      0.708
+    ]
+  }
+}

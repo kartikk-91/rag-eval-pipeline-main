@@ -1,0 +1,14 @@
+.venv/
+myenv/
+.git/
+.github/
+qdrant_storage/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+docs/
+tests/
+scripts/
+ROADMAP.md
+# data/ is NOT ignored: the image builds its own index from the PDFs.
