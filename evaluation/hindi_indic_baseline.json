@@ -1,37 +1,72 @@
 {
   "schema_version": 1,
+  "status": "current-diagnostic",
+  "metrics_are_current": true,
   "corpus_papers": 45,
-  "indexed_chunks": 1686,
+  "indexed_chunks": 2608,
   "questions": 45,
-  "question_design": "One source-first abstract passage per local paper. Gold passages were checked against their own ingested PDFs before retrieval. Human query, expected-answer, and claim-to-citation review remains pending; lexical overlap may favor BM25.",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "chunking": {
+    "strategy": "Hugging Face tokenizer-aware",
+    "chunk_size_tokens": 480,
+    "overlap_tokens": 128,
+    "max_sequence_length": 512
+  },
+  "question_design": "One source-first, mostly abstract-based English query per local PDF; expected answers and citation entailment still need independent human review.",
   "systems": {
-    "bm25": {
-      "recall_at_1": 0.311,
-      "recall_at_5": 0.667,
+    "dense": {
+      "recall_at_1": 0.244,
+      "recall_at_5": 0.600,
       "recall_at_10": 0.822,
-      "ndcg_at_10": 0.569,
-      "mrr_at_10": 0.474,
-      "latency_ms": 47
+      "ndcg_at_10": 0.510,
+      "mrr_at_10": 0.405,
+      "recall_at_20": 0.889,
+      "recall_at_100": 0.978,
+      "latency_p50_ms": 149.9,
+      "latency_p95_ms": 442.9
+    },
+    "bm25": {
+      "recall_at_1": 0.333,
+      "recall_at_5": 0.689,
+      "recall_at_10": 0.822,
+      "ndcg_at_10": 0.584,
+      "mrr_at_10": 0.477,
+      "recall_at_20": 0.889,
+      "recall_at_100": 1.000,
+      "latency_p50_ms": 19.2,
+      "latency_p95_ms": 25.2
     },
     "hybrid": {
-      "recall_at_1": 0.111,
-      "recall_at_5": 0.311,
-      "recall_at_10": 0.533,
-      "ndcg_at_10": 0.291,
-      "mrr_at_10": 0.218,
-      "latency_ms": 283
-    },
-    "dense": {
-      "recall_at_1": 0.0,
-      "recall_at_5": 0.067,
-      "recall_at_10": 0.156,
-      "ndcg_at_10": 0.063,
-      "mrr_at_10": 0.036,
-      "latency_ms": 573
+      "recall_at_1": 0.267,
+      "recall_at_5": 0.733,
+      "recall_at_10": 0.956,
+      "ndcg_at_10": 0.618,
+      "mrr_at_10": 0.487,
+      "recall_at_20": 1.000,
+      "recall_at_100": 1.000,
+      "latency_p50_ms": 250.3,
+      "latency_p95_ms": 740.3
     }
   },
-  "confidence_interval_note": "Recall@10 hybrid 95% CI [0.378, 0.689]. compare_retrievers intervals are candidate-vs-dense; do not interpret them as a BM25-vs-hybrid interval.",
-  "latency_note": "Measured locally on CPU in separate runs; indicative only and hardware-dependent.",
-  "metrics_are_current": true,
-  "note": "Current 45-paper, 1,686-chunk showcase index and 45-question source-first set. Retrieval metrics only; answer faithfulness and citation entailment have not been human-reviewed."
+  "paired_delta_vs_dense": {
+    "bm25_recall_at_10": {"delta": 0.000, "ci_95": [-0.156, 0.156]},
+    "bm25_ndcg_at_10": {"delta": 0.074, "ci_95": [-0.058, 0.204]},
+    "bm25_mrr": {"delta": 0.073, "ci_95": [-0.060, 0.204]},
+    "hybrid_recall_at_10": {"delta": 0.133, "ci_95": [0.022, 0.244]},
+    "hybrid_ndcg_at_10": {"delta": 0.107, "ci_95": [0.023, 0.188]},
+    "hybrid_mrr": {"delta": 0.083, "ci_95": [-0.011, 0.170]}
+  },
+  "reachability": {
+    "mrr_at_100": 0.490,
+    "recall_at_20": 1.000,
+    "recall_at_50": 1.000,
+    "recall_at_100": 1.000
+  },
+  "query_overlap_diagnostic": {
+    "mean_informative_term_overlap_with_gold": 0.2111,
+    "mean_best_same_paper_non_gold_overlap": 0.4667
+  },
+  "interpretation": "Initial retrieval baseline only. On these 45 English source-first questions, hybrid improves R@10 and nDCG@10 over dense under paired intervals, while BM25 is much faster and competitive. The overlap diagnostic warns that query wording may favor non-gold passages from the same paper. This is not Hindi-query, answer-quality, or citation-faithfulness evidence; question and claim-to-passage review is pending.",
+  "latency_note": "Warm p50/p95 after three warm-up queries; excludes model initialization. Absolute timings depend on local CPU hardware.",
+  "interval_note": "Paired bootstrap intervals compare each candidate with dense on the same 45 questions. Not every interval excludes zero."
 }

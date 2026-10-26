@@ -18,6 +18,8 @@ two means.
 """
 
 import argparse
+import math
+import statistics
 import time
 
 from evaluation.eval_harness import (
@@ -49,6 +51,22 @@ def _verdict(lo: float, hi: float) -> str:
     return "not distinguishable"
 
 
+def _latency_ms(retriever, eval_set, k: int = 10) -> tuple[float, float]:
+    """Measure warmed per-query retrieval latency; keep model load out of the timing."""
+    warmups = eval_set[: min(3, len(eval_set))]
+    for example in warmups:
+        retriever.retrieve(example.query, k)
+
+    samples = []
+    for example in eval_set:
+        started = time.perf_counter()
+        retriever.retrieve(example.query, k)
+        samples.append((time.perf_counter() - started) * 1000)
+    ordered = sorted(samples)
+    p95 = ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
+    return statistics.median(ordered), p95
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -70,12 +88,14 @@ def main() -> int:
     eval_set = load_eval_set(DEFAULT_EVAL_SET)
     dense = DenseRetriever()
 
-    t0 = time.perf_counter()
     base = evaluate(dense, eval_set, k_values=K_VALUES)
     base_deep = evaluate(dense, eval_set, k_values=DEEP_K)
-    dense_s = (time.perf_counter() - t0) / len(eval_set)
+    dense_p50, dense_p95 = _latency_ms(dense, eval_set)
 
-    print(f"{len(eval_set)} questions, dense baseline at {dense_s * 1000:.0f} ms/query\n")
+    print(
+        f"{len(eval_set)} questions, dense baseline warm latency "
+        f"p50 {dense_p50:.1f} ms / p95 {dense_p95:.1f} ms/query\n"
+    )
 
     candidates = []
     if "bm25" in systems or "hybrid" in systems:
@@ -96,11 +116,13 @@ def main() -> int:
             candidates.append(("hybrid (RRF)", HybridRetriever(dense=dense, bm25=bm25)))
 
     for label, retriever in candidates:
-        t0 = time.perf_counter()
         cand = evaluate(retriever, eval_set, k_values=K_VALUES)
-        rr_s = (time.perf_counter() - t0) / len(eval_set)
+        cand_p50, cand_p95 = _latency_ms(retriever, eval_set)
 
-        print(f"=== {label} — {rr_s * 1000:.0f} ms/query ({rr_s / dense_s:.1f}x dense) ===")
+        print(
+            f"=== {label} — warm latency p50 {cand_p50:.1f} ms / "
+            f"p95 {cand_p95:.1f} ms ({cand_p50 / dense_p50:.1f}x dense p50) ==="
+        )
         print(f"  {'metric':<11} {'dense':>7} {'cand':>8} {'delta':>7}   95% CI of delta")
         cand_deep = evaluate(retriever, eval_set, k_values=DEEP_K)
         for metric, b_rep, c_rep in [(m, base, cand) for m in HEADLINE] + [

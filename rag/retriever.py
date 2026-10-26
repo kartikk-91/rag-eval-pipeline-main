@@ -11,7 +11,7 @@ import unicodedata
 from collections import Counter
 from dataclasses import replace
 
-from rag.config import COLLECTION, MODEL_NAME, RERANK_MODEL, RERANK_POOL, make_client
+from rag.config import COLLECTION, RERANK_MODEL, RERANK_POOL, load_embedding_model, make_client
 from rag.types import Chunk
 
 
@@ -24,9 +24,7 @@ class DenseRetriever:
         # (docs/decisions/017). CLAUDE.md already said this; this file did not obey it.
         self._model = None
         if load_model:
-            from sentence_transformers import SentenceTransformer
-
-            self._model = SentenceTransformer(MODEL_NAME)
+            self._model = load_embedding_model()
         self._client = make_client()
 
     def retrieve_chunks(self, query: str, k: int) -> list[Chunk]:

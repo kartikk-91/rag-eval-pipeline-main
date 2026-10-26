@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f5f0">
+  <title>Indic Paper Search</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: #202a2a;
+      background: #f6f5f0;
+      font-synthesis: none;
+      --paper: #f6f5f0;
+      --surface: #fffefa;
+      --sidebar: #efeee8;
+      --ink: #202a2a;
+      --muted: #64706e;
+      --faint: #8b9490;
+      --line: #dcded7;
+      --line-strong: #c9cec5;
+      --green: #285846;
+      --green-dark: #1e4538;
+      --green-soft: #e8f0ea;
+      --amber: #80591d;
+      --amber-soft: #f5eedf;
+      --danger: #8c3934;
+      --danger-soft: #f8e9e6;
+      --radius: 10px;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; }
+    button, input, select { font: inherit; }
+    button, a, select { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid #6b9b83; outline-offset: 2px;
+    }
+    ::selection { color: #14221c; background: #c8dfce; }
+    .layout { min-height: 100vh; display: grid; grid-template-columns: 238px minmax(0, 1fr); align-items: start; }
+    .sidebar {
+      position: sticky; top: 0; align-self: start; z-index: 5; display: flex; flex-direction: column;
+      height: 100vh; overflow-y: auto; padding: 27px 16px 18px;
+      background: var(--sidebar); border-right: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 0 8px; color: var(--ink); text-decoration: none; }
+    .brand-mark {
+      display: grid; place-items: center; width: 35px; height: 35px; border: 1px solid #7a9584;
+      color: var(--green-dark); font-family: Georgia, serif; font-size: 14px; font-weight: 700;
+      letter-spacing: -.05em;
+    }
+    .brand-name { display: block; font-size: 13px; font-weight: 750; letter-spacing: -.01em; }
+    .brand-sub { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; letter-spacing: .035em; }
+    .nav-label { margin: 42px 10px 9px; color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .nav { display: grid; gap: 3px; }
+    .nav button {
+      display: flex; align-items: center; min-height: 39px; padding: 0 10px; border: 0; border-radius: 6px;
+      background: transparent; color: #4e5b57; text-align: left; font-size: 12px; font-weight: 570; cursor: pointer;
+    }
+    .nav button:hover { background: #e7e7df; color: var(--ink); }
+    .nav button.active { background: #e1e9e2; color: var(--green-dark); font-weight: 720; }
+    main { min-width: 0; padding: 0 clamp(22px, 5vw, 76px) 64px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 70px; border-bottom: 1px solid var(--line); }
+    .breadcrumb { color: var(--muted); font-size: 11px; }
+    .topbar-title { color: var(--ink); font-size: 11px; font-weight: 700; }
+    .main-inner { width: min(100%, 1120px); margin: 0 auto; }
+    .page-heading { padding: 37px 0 22px; }
+    .page-heading h1 { margin: 0; color: var(--ink); font-family: Georgia, "Times New Roman", serif; font-size: 30px; font-weight: 500; letter-spacing: -.025em; line-height: 1.2; }
+    .page-heading p { max-width: 650px; margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .stats-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 4px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+    .stat-item { display: flex; min-height: 72px; flex-direction: column; justify-content: center; gap: 4px; padding: 11px 17px; border-right: 1px solid var(--line); }
+    .stat-item:last-child { border-right: 0; }
+    .stat-item strong { color: var(--ink); font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }
+    .stat-item span { color: var(--muted); font-size: 10px; }
+    .stat-highlight strong { color: var(--green-dark); }
+    .stats-context { margin: 0 0 16px; color: var(--muted); font-size: 9px; }
+    .view { display: none; }
+    .view.active { display: block; }
+    .search-form { padding: 17px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); }
+    .field-label, .control-label { display: block; margin-bottom: 8px; color: #43514d; font-size: 11px; font-weight: 700; }
+    .question-row { display: flex; gap: 9px; }
+    .question-row input {
+      flex: 1; min-width: 0; height: 43px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 6px;
+      background: #fff; color: var(--ink); font-size: 13px;
+    }
+    .question-row input::placeholder { color: #858f8b; }
+    .question-row .button { flex: 0 0 auto; min-width: 120px; }
+    .question-row #answerButton { min-width: 160px; }
+    .button {
+      min-height: 39px; padding: 0 15px; border: 1px solid var(--line-strong); border-radius: 6px;
+      background: #fff; color: #34423d; font-size: 11px; font-weight: 680; cursor: pointer;
+      transition: background-color .16s ease, border-color .16s ease, color .16s ease;
+    }
+    .button:hover:not(:disabled) { border-color: #91a898; background: #f4f7f2; }
+    .button:disabled { opacity: .56; cursor: not-allowed; }
+    .button-primary { border-color: var(--green); background: var(--green); color: #fff; }
+    .button-primary:hover:not(:disabled) { border-color: var(--green-dark); background: var(--green-dark); color: #fff; }
+    .button-quiet { border-color: transparent; background: transparent; color: var(--green-dark); }
+    .button-quiet:hover:not(:disabled) { border-color: transparent; background: var(--green-soft); }
+    .advanced-controls { margin-top: 12px; }
+    .advanced-controls summary { width: fit-content; color: var(--muted); font-size: 10px; cursor: pointer; }
+    .advanced-controls summary:hover { color: var(--green-dark); }
+    .search-options { display: flex; align-items: end; flex-wrap: wrap; gap: 13px; padding-top: 12px; }
+    .select-field { display: grid; gap: 6px; }
+    .select-field label { color: var(--muted); font-size: 10px; font-weight: 650; }
+    .select-field select {
+      min-width: 152px; height: 34px; padding: 0 28px 0 9px; border: 1px solid var(--line); border-radius: 5px;
+      background: #fff; color: #34423d; font-size: 11px;
+    }
+    .select-field.count select { min-width: 84px; }
+    .examples { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; padding: 14px 1px 0; }
+    .examples-label { margin-right: 3px; color: var(--muted); font-size: 10px; }
+    .example-button { padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--green); font-size: 10px; text-align: left; cursor: pointer; }
+    .example-button:hover { background: var(--green-soft); }
+    .status-line { min-height: 20px; margin: 13px 0 0; color: var(--muted); font-size: 11px; }
+    .status-line.error { color: var(--danger); }
+    .status-line.success { color: var(--green-dark); }
+    .query-insights { margin: 6px 0 18px; padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+    .query-insights[hidden] { display: none; }
+    .insight-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .insight-card { min-width: 0; padding: 10px 11px; border: 1px solid var(--line); border-radius: 5px; background: #fbfcfa; }
+    .insight-label { display: block; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+    .insight-value { display: block; margin-top: 5px; color: var(--ink); font-size: 17px; font-weight: 720; font-variant-numeric: tabular-nums; }
+    .insight-caption { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+    .insight-note { margin: 10px 1px 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .benchmark-reference { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--line); color: #45524d; font-size: 10px; line-height: 1.6; }
+    .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 33px 0 12px; }
+    .section-heading h2 { margin: 0; color: var(--ink); font-family: Georgia, "Times New Roman", serif; font-size: 21px; font-weight: 500; letter-spacing: -.015em; }
+    .section-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .section-heading .button { flex: 0 0 auto; }
+    .results { border-top: 1px solid var(--line-strong); }
+    .result-row { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; padding: 17px 2px 19px; border-bottom: 1px solid var(--line); }
+    .rank { padding-top: 2px; color: #7b8581; font-family: Georgia, serif; font-size: 15px; }
+    .result-content { min-width: 0; }
+    .result-title { margin: 0; color: var(--ink); font-size: 13px; font-weight: 720; line-height: 1.45; }
+    .result-meta { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .result-ref { display: inline-block; margin-top: 7px; color: var(--green); font-size: 10px; font-weight: 650; }
+    .passage-text { max-width: 82ch; margin: 10px 0 0; color: #37433f; font-size: 12px; line-height: 1.75; }
+    .result-score { display: inline-flex; margin-top: 8px; padding: 3px 7px; border: 1px solid var(--line); border-radius: 4px; background: #f8f9f6; color: #55625d; font-size: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .compare-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 23px; }
+    .compare-column { min-width: 0; }
+    .compare-column h3 { margin: 0; color: var(--ink); font-family: Georgia, serif; font-size: 17px; font-weight: 500; }
+    .compare-column .method-meta { margin: 4px 0 10px; color: var(--muted); font-size: 10px; }
+    .compare-column .result-row { grid-template-columns: 23px minmax(0, 1fr); gap: 7px; padding: 13px 0; }
+    .compare-column .result-title { font-size: 11px; }
+    .compare-column .result-meta, .compare-column .result-ref { font-size: 9px; }
+    .compare-column .passage-text { font-size: 10px; line-height: 1.6; }
+    .compare-meta { margin: -3px 0 13px; color: var(--muted); font-size: 10px; }
+    .empty-state { padding: 23px 3px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .answer-workflow { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .answer-panel { margin: 22px 0 0; }
+    .answer-panel[hidden] { display: none; }
+    .answer-paper { padding: 18px 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    .answer-paper h3 { margin: 0; color: var(--ink); font-family: Georgia, serif; font-size: 18px; font-weight: 500; }
+    .answer-text { max-width: 76ch; margin: 12px 0 0; color: #303d39; font-size: 13px; line-height: 1.8; }
+    .inline-citation { display: inline; margin: 0 1px; padding: 1px 4px; border: 1px solid #d0dfd3; border-radius: 3px; background: #edf4ee; color: var(--green-dark); font-size: 10px; font-weight: 700; text-decoration: none; vertical-align: 1px; }
+    .inline-citation:hover { background: #dceade; }
+    .answer-sources { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+    .answer-sources h4 { margin: 0 0 8px; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .answer-source { padding: 9px 0; border-top: 1px solid #e8e9e3; scroll-margin-top: 14px; }
+    .answer-source summary { color: var(--green-dark); font-size: 10px; font-weight: 700; cursor: pointer; }
+    .answer-source .passage-text { margin-top: 6px; }
+    .callout { padding: 16px 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .callout.error { padding: 13px; border: 1px solid #e8c9c5; border-radius: 6px; background: var(--danger-soft); color: #692e2a; }
+    .callout.error p { margin: 0; }
+    .callout.error .button { margin-top: 9px; }
+    .catalog-toolbar { display: flex; gap: 9px; margin: 18px 0 12px; }
+    .catalog-toolbar input { flex: 1; min-width: 0; height: 37px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 11px; }
+    .catalog-toolbar select { min-width: 142px; height: 37px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 5px; background: var(--surface); color: var(--ink); font-size: 11px; }
+    .catalog-list { border-top: 1px solid var(--line-strong); }
+    .paper-row { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 18px; padding: 15px 2px; border-bottom: 1px solid var(--line); }
+    .paper-title { margin: 0; color: var(--ink); font-size: 12px; font-weight: 700; line-height: 1.5; }
+    .paper-details { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+    .paper-topic { margin-top: 5px; color: #69746f; font-size: 10px; line-height: 1.55; }
+    .paper-action { align-self: center; color: var(--green); font-size: 10px; font-weight: 700; text-align: right; text-decoration: none; }
+    .paper-action:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .paper-status { display: inline-block; margin-top: 7px; padding: 3px 6px; border-radius: 3px; background: var(--green-soft); color: var(--green-dark); font-size: 9px; font-weight: 650; }
+    .paper-status.needs-refresh { background: #f3eedf; color: #6d5b30; }
+    .paper-status.catalog-only { background: #eeeee8; color: #66716d; }
+    .metrics-note { margin: 0 0 16px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+    .metrics-table-wrap { overflow-x: auto; border-top: 1px solid var(--line-strong); }
+    .metrics-table { width: 100%; border-collapse: collapse; background: var(--surface); font-variant-numeric: tabular-nums; }
+    .metrics-table th, .metrics-table td { padding: 12px 13px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    .metrics-table th { color: var(--muted); font-size: 9px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+    .metrics-table th:first-child, .metrics-table td:first-child { text-align: left; }
+    .metrics-table td { color: #394540; font-size: 11px; }
+    .metrics-table td:first-child { color: var(--ink); font-weight: 700; }
+    .metrics-table tr.best td:first-child::after { content: "  · strongest R@10"; color: var(--green); font-size: 9px; font-weight: 600; }
+    .metrics-footnote { margin-top: 10px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .index-notice { margin: 14px 0 0; padding: 13px 15px; border: 1px solid #e4d6b9; border-radius: 6px; background: #fbf7ed; color: #665635; font-size: 11px; line-height: 1.6; }
+    .index-notice[hidden] { display: none; }
+    .manage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin-top: 14px; }
+    .manage-card { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+    .manage-card h2 { margin: 0; color: var(--ink); font-family: Georgia, serif; font-size: 19px; font-weight: 500; }
+    .manage-card > p { margin: 6px 0 15px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .manage-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .manage-field { display: grid; align-content: start; gap: 5px; min-width: 0; }
+    .manage-field.wide { grid-column: 1 / -1; }
+    .manage-field label { color: #43514d; font-size: 10px; font-weight: 700; }
+    .manage-field input, .manage-field select, .manage-field textarea { width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--line-strong); border-radius: 5px; background: #fff; color: var(--ink); font: inherit; font-size: 11px; }
+    .manage-field input, .manage-field select { min-height: 36px; }
+    .manage-field textarea { min-height: 82px; resize: vertical; line-height: 1.55; }
+    .manage-field input[type="file"] { padding: 6px; }
+    .manage-actions { display: flex; align-items: center; gap: 10px; margin-top: 13px; }
+    .manage-message { min-height: 18px; margin: 10px 0 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .manage-message.error { color: var(--danger); }
+    .manage-message.success { color: var(--green-dark); }
+    .manage-footnote { margin-top: 11px !important; padding-top: 10px; border-top: 1px solid var(--line); }
+    .draft-section { margin-top: 23px; }
+    .draft-list { border-top: 1px solid var(--line-strong); }
+    .draft-row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+    .draft-query { margin: 0; color: var(--ink); font-size: 11px; font-weight: 680; line-height: 1.5; }
+    .draft-meta { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+    .draft-badge { align-self: center; flex: 0 0 auto; padding: 4px 7px; border-radius: 4px; background: #f3eedf; color: #6d5b30; font-size: 9px; }
+    .skeleton { height: 12px; margin: 10px 0; border-radius: 3px; background: linear-gradient(90deg, #e9e9e2 25%, #f3f2ed 40%, #e9e9e2 60%); background-size: 200% 100%; animation: shimmer 1.3s ease infinite; }
+    @keyframes shimmer { to { background-position-x: -200%; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { height: auto; min-height: 0; padding: 11px 18px; flex-direction: row; align-items: center; justify-content: space-between; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav-label { display: none; }
+      .nav { display: flex; gap: 2px; }
+      .nav button { min-height: 34px; padding: 0 9px; font-size: 10px; }
+      main { padding-right: 26px; padding-left: 26px; }
+      .topbar { min-height: 56px; }
+    }
+    @media (max-width: 640px) {
+      .sidebar { align-items: flex-start; flex-direction: column; gap: 10px; padding: 12px 16px 8px; }
+      .nav { width: 100%; overflow-x: auto; }
+      .nav button { flex: 0 0 auto; }
+      main { padding: 0 17px 42px; }
+      .topbar { min-height: 48px; }
+      .page-heading { padding: 27px 0 17px; }
+      .page-heading h1 { font-size: 26px; }
+      .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .stat-item:nth-child(2) { border-right: 0; }
+      .stat-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .search-form { padding: 12px; }
+      .question-row { flex-wrap: wrap; }
+      .question-row input { flex-basis: 100%; }
+      .question-row .button { flex: 1; }
+      .search-options { align-items: stretch; gap: 9px; }
+      .select-field { flex: 1; min-width: 130px; }
+      .select-field select, .select-field.count select { width: 100%; min-width: 0; }
+      .section-heading { align-items: flex-start; flex-direction: column; margin-top: 25px; }
+      .section-heading .button { align-self: stretch; }
+      .compare-grid { grid-template-columns: 1fr; gap: 21px; }
+      .manage-grid { grid-template-columns: 1fr; }
+      .compare-column .result-row { grid-template-columns: 27px minmax(0, 1fr); }
+      .compare-column .result-title { font-size: 12px; }
+      .compare-column .passage-text { font-size: 11px; }
+      .answer-workflow { align-items: flex-start; flex-direction: column; gap: 12px; }
+      .answer-workflow .button { width: 100%; }
+      .catalog-toolbar { flex-direction: column; }
+      .paper-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+      .paper-action { justify-self: start; text-align: left; }
+      .metrics-table th, .metrics-table td { padding: 10px 8px; font-size: 10px; }
+      .insight-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="#search" aria-label="Indic Paper Search home" data-view="search">
+        <span class="brand-mark" aria-hidden="true">IP</span>
+        <span><span class="brand-name">Indic Paper Search</span><span class="brand-sub">Research retrieval benchmark</span></span>
+      </a>
+      <div class="nav-label">Workspace</div>
+      <nav class="nav" aria-label="Main navigation">
+        <button class="active" type="button" data-view="search">Search papers</button>
+        <button type="button" data-view="library">Paper catalogue</button>
+        <button type="button" data-view="evaluation">Benchmark results</button>
+        <button type="button" data-view="manage">Add content</button>
+      </nav>
+    </aside>
+
+    <main>
+      <div class="topbar"><span class="breadcrumb">Research collection / <span id="breadcrumbPage">Search</span></span></div>
+      <div class="main-inner">
+        <section class="view active" id="search" aria-labelledby="searchHeading">
+          <header class="page-heading">
+            <h1 id="searchHeading">Ask the paper collection</h1>
+            <p>Get a concise answer from the Hindi and Indic NLP papers, with citations you can open to check the source passages.</p>
+          </header>
+
+          <section class="stats-row" aria-label="Collection and benchmark snapshot">
+            <div class="stat-item"><strong id="statPapers">—</strong><span>full-text papers</span></div>
+            <div class="stat-item"><strong id="statPassages">—</strong><span>searchable passages</span></div>
+            <div class="stat-item"><strong id="statQuestions">—</strong><span>evaluation questions</span></div>
+            <div class="stat-item stat-highlight"><strong id="statHybridRecall">—</strong><span>hybrid Recall@10</span></div>
+          </section>
+          <p class="stats-context">Loading the current benchmark summary…</p>
+          <div id="searchIndexNotice" class="index-notice" hidden></div>
+
+          <form class="search-form" id="searchForm">
+            <label class="field-label" for="query">Research question</label>
+            <div class="question-row">
+              <input id="query" name="query" type="search" minlength="3" maxlength="500" value="How does DeepHCoref build its Hindi coreference system?" placeholder="Ask about a method, dataset, model, or result" autocomplete="off" required>
+              <button id="searchButton" class="button button-primary" type="submit">Search papers</button>
+              <button id="answerButton" class="button" type="button" disabled>Generate cited answer</button>
+            </div>
+            <p id="answerWorkflowNote" class="answer-workflow">Search first, then generate a cited answer from the passages. Each citation opens its exact source passage.</p>
+            <details class="advanced-controls">
+              <summary>Search settings</summary>
+              <div class="search-options">
+              <div class="select-field">
+                <label for="mode">Ranking method</label>
+                <select id="mode" name="mode">
+                  <option value="bm25">BM25 · keyword ranking</option>
+                  <option value="hybrid">Hybrid · combined ranking</option>
+                  <option value="dense">Dense · semantic ranking</option>
+                </select>
+              </div>
+              <div class="select-field count">
+                <label for="k">Passages per method</label>
+                <select id="k" name="k"><option value="5">5 passages</option><option value="3">3 passages</option><option value="8">8 passages</option></select>
+              </div>
+              </div>
+            </details>
+          </form>
+
+          <div class="examples" aria-label="Suggested research questions">
+            <span class="examples-label">Try:</span>
+            <button class="example-button" type="button" data-query="How does DeepHCoref build its Hindi coreference system?">Hindi coreference · DeepHCoref</button>
+            <button class="example-button" type="button" data-query="What kinds of resources does IndicNLPSuite introduce?">Indic NLP resources</button>
+            <button class="example-button" type="button" data-query="How many tasks and languages are covered by the IndicXTREME benchmark?">Multilingual evaluation</button>
+          </div>
+
+          <p id="searchStatus" class="status-line" role="status" aria-live="polite"></p>
+          <div id="queryInsights" class="query-insights" hidden aria-live="polite"></div>
+          <div id="answerPanel" class="answer-panel" hidden aria-live="polite"></div>
+          <div class="section-heading">
+            <div><h2 id="resultHeading">Evidence passages</h2><p id="resultSub">Run a search to see the papers and passages most relevant to your question.</p></div>
+            <button id="compareButton" class="button" type="button">Compare rankings (optional)</button>
+          </div>
+          <div id="comparisonMeta" class="compare-meta" hidden></div>
+          <div id="results" class="results" aria-live="polite" aria-busy="false">
+            <div class="empty-state">Your results will appear here. Each passage includes its paper and page reference so you can check the source directly.</div>
+          </div>
+        </section>
+
+        <section class="view" id="library" aria-labelledby="libraryHeading">
+          <header class="page-heading"><h1 id="libraryHeading">Paper catalogue</h1><p>Browse the sources behind this research collection. Open a paper’s record for its bibliographic page and access details.</p></header>
+          <div class="catalog-toolbar">
+            <input id="paperFilter" type="search" placeholder="Search by title, author, or topic" aria-label="Filter papers">
+            <select id="statusFilter" aria-label="Filter by full text status"><option value="all">All records</option><option value="downloaded">Full text available</option><option value="pending">Catalogue record only</option></select>
+          </div>
+          <p id="catalogStatus" class="status-line" role="status" aria-live="polite"></p>
+          <div id="paperGrid" class="catalog-list"><div class="empty-state">Loading the catalogue…</div></div>
+        </section>
+
+        <section class="view" id="evaluation" aria-labelledby="evaluationHeading">
+          <header class="page-heading"><h1 id="evaluationHeading">Retrieval benchmark</h1><p>Compare ranking quality and response time over the same source-first evaluation questions.</p></header>
+          <p id="metricsNote" class="metrics-note">Results are a diagnostic baseline for this collection, not a measure of generated-answer quality.</p>
+          <div id="metricGrid"><div class="empty-state">Loading the benchmark results…</div></div>
+        </section>
+
+        <section class="view" id="manage" aria-labelledby="manageHeading">
+          <header class="page-heading"><h1 id="manageHeading">Add to your research collection</h1><p>Bring in a paper, then draft a source-grounded evaluation question from a passage you select yourself.</p></header>
+          <div id="manageIndexNotice" class="index-notice" hidden></div>
+          <div class="manage-grid">
+            <form class="manage-card" id="paperUploadForm">
+              <h2>Add a paper</h2>
+              <p>Upload a text-readable PDF and record its source and access terms. Files stay in your local project folder.</p>
+              <div class="manage-fields">
+                <div class="manage-field wide"><label for="paperFile">PDF file · up to 25 MB</label><input id="paperFile" name="file" type="file" accept=".pdf,application/pdf" required></div>
+                <div class="manage-field wide"><label for="paperTitle">Paper title</label><input id="paperTitle" name="title" maxlength="240" required></div>
+                <div class="manage-field wide"><label for="paperAuthors">Authors</label><input id="paperAuthors" name="authors" maxlength="500" placeholder="Separate authors with semicolons" required></div>
+                <div class="manage-field"><label for="paperYear">Publication year</label><input id="paperYear" name="year" type="number" min="1900" max="2100" value="2024" required></div>
+                <div class="manage-field"><label for="paperTopic">Topic</label><input id="paperTopic" name="topic" maxlength="240" placeholder="Hindi coreference, POS tagging…" required></div>
+                <div class="manage-field wide"><label for="paperSourceUrl">Bibliographic or project page · optional</label><input id="paperSourceUrl" name="source_url" type="url" maxlength="500" placeholder="https://…"></div>
+                <div class="manage-field wide"><label for="paperWhy">Why does this paper belong in the collection?</label><textarea id="paperWhy" name="why_in_scope" maxlength="600" required></textarea></div>
+                <div class="manage-field wide"><label for="paperLicense">Access or license notes</label><textarea id="paperLicense" name="license_notes" maxlength="600" placeholder="Record the permission or license basis. The app does not verify it." required></textarea></div>
+              </div>
+              <div class="manage-actions"><button id="paperUploadButton" class="button button-primary" type="submit">Add paper</button></div>
+              <p id="paperUploadMessage" class="manage-message" role="status" aria-live="polite"></p>
+              <p class="manage-footnote">Uploads are limited to local development and are not sent to a server. The rights note is user supplied and must be checked before sharing or redistributing a PDF.</p>
+            </form>
+
+            <form class="manage-card" id="questionDraftForm">
+              <h2>Draft an evaluation question</h2>
+              <p>Choose the source passage first. The app checks that your evidence text appears on the selected PDF page.</p>
+              <div class="manage-fields">
+                <div class="manage-field wide"><label for="questionSource">Source paper</label><select id="questionSource" name="source_pdf" required><option value="">Choose an available full text</option></select></div>
+                <div class="manage-field"><label for="questionPage">Page number</label><input id="questionPage" name="page" type="number" min="1" max="1000" required></div>
+                <div class="manage-field"><label for="questionSection">Section · optional</label><input id="questionSection" name="section" maxlength="120" placeholder="Abstract, Results…"></div>
+                <div class="manage-field wide"><label for="questionEvidence">Exact supporting passage from that page</label><textarea id="questionEvidence" name="passage_text" minlength="40" maxlength="2000" placeholder="Copy 1–3 complete sentences directly from the selected paper" required></textarea></div>
+                <div class="manage-field wide"><label for="questionText">Question based on the passage</label><textarea id="questionText" name="question" minlength="3" maxlength="500" required></textarea></div>
+                <div class="manage-field wide"><label for="questionClaim">Expected answer or claim</label><textarea id="questionClaim" name="expected_claim" minlength="8" maxlength="700" required></textarea></div>
+              </div>
+              <div class="manage-actions"><button id="questionDraftButton" class="button button-primary" type="submit">Save question draft</button></div>
+              <p id="questionDraftMessage" class="manage-message" role="status" aria-live="polite"></p>
+              <p class="manage-footnote">Drafts are saved separately from the active benchmark. Review the question and claim before promoting them into evaluation.</p>
+            </form>
+          </div>
+          <section class="draft-section" aria-labelledby="draftHeading">
+            <div class="section-heading"><div><h2 id="draftHeading">Question drafts</h2><p id="draftCount">Loading saved drafts…</p></div></div>
+            <div id="questionDraftList" class="draft-list"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const byId = id => document.getElementById(id);
+    let catalog = [];
+    let currentQuestion = "";
+    let currentMode = "hybrid";
+    let currentK = 5;
+    let lastWasComparison = false;
+    let answerEvidenceReady = false;
+    let answerVersion = 0;
+    let currentBenchmarkMetrics = null;
+    let currentBenchmarkQuestionCount = 0;
+
+    function textNode(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      node.textContent = text;
+      return node;
+    }
+
+    async function getJSON(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Request failed (${response.status})`);
+      return response.json();
+    }
+
+    function showView(name) {
+      document.querySelectorAll(".view").forEach(view => view.classList.toggle("active", view.id === name));
+      document.querySelectorAll(".nav [data-view]").forEach(button => button.classList.toggle("active", button.dataset.view === name));
+      const label = {search: "Search", library: "Catalogue", evaluation: "Benchmark", manage: "Add content"}[name] || "Search";
+      byId("breadcrumbPage").textContent = label;
+      document.title = `${label} · Indic Paper Search`;
+      if (name === "library") byId("paperFilter").focus({preventScroll: true});
+      if (name === "manage") loadQuestionDrafts();
+    }
+
+    document.querySelectorAll("[data-view]").forEach(button => button.addEventListener("click", event => {
+      event.preventDefault();
+      showView(button.dataset.view);
+    }));
+
+    function setStatus(message, kind = "") {
+      const status = byId("searchStatus");
+      status.className = `status-line ${kind}`.trim();
+      status.textContent = message;
+    }
+
+    function passageRow(source, index, mode) {
+      const row = document.createElement("article");
+      row.className = "result-row";
+      const rank = textNode("div", "rank", String(index + 1).padStart(2, "0"));
+      const body = document.createElement("div");
+      body.className = "result-content";
+      body.append(textNode("h3", "result-title", source.title));
+      const meta = [source.authors, source.year || "", source.section || ""].filter(Boolean).join(" · ");
+      body.append(textNode("div", "result-meta", meta));
+      body.append(textNode("div", "result-ref", source.citation));
+      const scoreLabels = {bm25: "BM25 score", dense: "Cosine similarity", hybrid: "RRF score"};
+      if (Number.isFinite(Number(source.score))) {
+        body.append(textNode("span", "result-score", `${scoreLabels[mode] || "Retrieval score"} · ${Number(source.score).toFixed(4)}`));
+      }
+      if (source.evidence) body.append(textNode("p", "passage-text", source.evidence));
+      row.append(rank, body);
+      return row;
+    }
+
+    function renderSearchResults(data) {
+      const root = byId("results");
+      root.classList.remove("compare-grid");
+      root.replaceChildren();
+      const results = data.results || [];
+      if (!results.length) {
+        root.append(textNode("div", "empty-state", "No relevant passages were found. Try a paper title, model name, dataset, or a more specific question."));
+        byId("resultSub").textContent = "No passages matched this search.";
+        return;
+      }
+      results.forEach((source, index) => root.append(passageRow(source, index, data.mode)));
+      byId("resultSub").textContent = `${results.length} passages · ${data.mode.toUpperCase()} ranking`;
+    }
+
+    function insightCard(label, value, caption) {
+      const card = document.createElement("div");
+      card.className = "insight-card";
+      card.append(textNode("span", "insight-label", label));
+      card.append(textNode("strong", "insight-value", value));
+      card.append(textNode("span", "insight-caption", caption));
+      return card;
+    }
+
+    function addBenchmarkContext(root) {
+      if (!currentBenchmarkMetrics) return;
+      const systems = currentBenchmarkMetrics.systems || {};
+      const recall = mode => {
+        const value = systems[mode]?.recall_at_10;
+        return typeof value === "number" && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : "not available";
+      };
+      const reference = textNode("p", "benchmark-reference", `Collection benchmark · ${currentBenchmarkQuestionCount} source-first questions: gold passage in top 10 — Hybrid ${recall("hybrid")}, BM25 ${recall("bm25")}, Dense ${recall("dense")}. This is an aggregate result; this search has no judged answer.`);
+      root.append(reference);
+    }
+
+    function renderQueryInsights(data, responseMs, compared = false) {
+      const root = byId("queryInsights");
+      root.replaceChildren();
+      root.hidden = false;
+      if (compared) {
+        const systems = data.systems || [];
+        const allIds = systems.flatMap(system => (system.results || []).map(source => source.chunk_id).filter(Boolean));
+        const counts = new Map();
+        allIds.forEach(id => counts.set(id, (counts.get(id) || 0) + 1));
+        const papers = new Set(systems.flatMap(system => (system.results || []).map(source => source.title)));
+        const shared = [...counts.values()].filter(count => count > 1).length;
+        const grid = document.createElement("div");
+        grid.className = "insight-grid";
+        grid.append(insightCard("Unique passages", String(counts.size), "Across all methods’ result lists"));
+        grid.append(insightCard("Shared passages", String(shared), "Exact same passage returned by 2+ methods"));
+        grid.append(insightCard("Papers represented", String(papers.size), "Distinct paper titles across the lists"));
+        grid.append(insightCard("Search response", `${responseMs} ms`, "Time from this page, including API overhead"));
+        root.append(grid);
+        root.append(textNode("p", "insight-note", "Overlap shows agreement between rankings, not correctness. Each method’s score uses a different scale; compare the ranked passages and the benchmark metrics, not raw scores."));
+      } else {
+        const results = data.results || [];
+        const papers = new Set(results.map(source => source.title));
+        const mode = data.mode || currentMode;
+        const scoreNames = {bm25: "BM25 score", dense: "Cosine similarity", hybrid: "RRF score"};
+        const topScore = results.length && Number.isFinite(Number(results[0].score)) ? Number(results[0].score).toFixed(4) : "—";
+        const grid = document.createElement("div");
+        grid.className = "insight-grid";
+        grid.append(insightCard("Ranking method", mode.toUpperCase(), "Controls how passages are ordered"));
+        grid.append(insightCard("Passages retrieved", String(results.length), `Across ${papers.size} ${papers.size === 1 ? "paper" : "papers"}`));
+        grid.append(insightCard("Search response", `${responseMs} ms`, "Time from this page, including API overhead"));
+        grid.append(insightCard("Top passage score", topScore, `${scoreNames[mode] || "Retrieval score"} · not confidence`));
+        root.append(grid);
+        root.append(textNode("p", "insight-note", "These are search diagnostics, not a correctness score. Use the passages below to verify the evidence; generate a cited answer when you want a concise synthesis."));
+      }
+      addBenchmarkContext(root);
+    }
+
+    function renderComparison(data) {
+      const root = byId("results");
+      root.classList.add("compare-grid");
+      root.replaceChildren();
+      for (const system of data.systems) {
+        const column = document.createElement("section");
+        column.className = "compare-column";
+        column.append(textNode("h3", "", system.name));
+        const sourceTitles = new Set((system.results || []).map(source => source.title));
+        column.append(textNode("p", "method-meta", `${system.latency_ms} ms · ${system.results.length} passages · ${sourceTitles.size} papers`));
+        if (!system.results.length) column.append(textNode("div", "empty-state", "No passages found."));
+        const lowerName = system.name.toLowerCase();
+        const method = lowerName.includes("bm25") ? "bm25" : lowerName.includes("dense") ? "dense" : "hybrid";
+        system.results.forEach((source, index) => column.append(passageRow(source, index, method)));
+        root.append(column);
+      }
+      byId("comparisonMeta").hidden = false;
+      byId("comparisonMeta").textContent = `Same question and passage limit · model setup ${(data.initialization_ms / 1000).toFixed(1)} s · overlap is agreement, not correctness.`;
+      byId("resultSub").textContent = "Compare the passages each method ranks highest. The benchmark measures relevance against reviewed evidence; this live query does not have a gold label.";
+    }
+
+    async function runSearch(compare = false) {
+      const query = byId("query").value.trim();
+      if (query.length < 3) {
+        byId("query").focus();
+        setStatus("Enter a question with at least three characters.", "error");
+        return;
+      }
+      const mode = compare ? "compare" : byId("mode").value;
+      currentQuestion = query;
+      currentMode = compare ? "hybrid" : mode;
+      currentK = Number(byId("k").value);
+      lastWasComparison = compare;
+      answerVersion += 1;
+      const searchVersion = answerVersion;
+      answerEvidenceReady = false;
+      byId("answerButton").disabled = true;
+      byId("answerWorkflowNote").textContent = "Searching for passages…";
+      const searchButton = byId("searchButton");
+      const compareButton = byId("compareButton");
+      const results = byId("results");
+      searchButton.disabled = true;
+      compareButton.disabled = true;
+      byId("answerPanel").hidden = true;
+      byId("queryInsights").hidden = true;
+      byId("queryInsights").replaceChildren();
+      byId("comparisonMeta").hidden = true;
+      results.classList.remove("compare-grid");
+      results.setAttribute("aria-busy", "true");
+      results.replaceChildren(textNode("div", "empty-state", lastWasComparison ? "Comparing BM25, dense, and hybrid rankings…" : "Searching the paper collection…"));
+      setStatus(mode !== "bm25" ? "The first neural search may take a moment while the model loads." : "");
+      try {
+        const requestStarted = performance.now();
+        const response = await fetch(lastWasComparison ? "/api/benchmark" : "/api/search", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify(lastWasComparison ? {question: query, k: currentK} : {question: query, mode, k: currentK})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Search failed (${response.status})`);
+        if (searchVersion !== answerVersion) return;
+        const responseMs = Math.round(performance.now() - requestStarted);
+        const hasEvidence = lastWasComparison
+          ? data.systems.some(system => system.results.length)
+          : data.results.length > 0;
+        if (lastWasComparison) renderComparison(data); else renderSearchResults(data);
+        renderQueryInsights(data, responseMs, lastWasComparison);
+        if (hasEvidence) {
+          const methodName = {hybrid: "Hybrid", bm25: "BM25", dense: "Dense"}[currentMode];
+          byId("answerWorkflowNote").textContent = lastWasComparison
+            ? "Comparison is ready. Generate a cited answer from the hybrid passages when you want a synthesis."
+            : `Found passages with ${methodName}. Generate a cited answer above for a concise synthesis.`;
+          answerEvidenceReady = true;
+          byId("answerButton").disabled = false;
+        } else {
+          byId("answerWorkflowNote").textContent = "No passages found. Try a more specific question before generating an answer.";
+        }
+        if (hasEvidence) setStatus(lastWasComparison ? "Comparison complete." : "Search complete. Generate a cited answer above when ready.", "success");
+      } catch (error) {
+        if (searchVersion !== answerVersion) return;
+        byId("answerWorkflowNote").textContent = "Search failed. Fix the search issue and try again before generating an answer.";
+        results.replaceChildren();
+        const message = textNode("div", "callout error", "");
+        message.append(textNode("p", "", `Could not complete the search. ${error.message}`));
+        const retry = textNode("button", "button", "Try again");
+        retry.type = "button";
+        retry.addEventListener("click", () => runSearch(lastWasComparison));
+        message.append(retry);
+        results.append(message);
+        setStatus("Search needs attention.", "error");
+      } finally {
+        searchButton.disabled = false;
+        compareButton.disabled = false;
+        results.setAttribute("aria-busy", "false");
+      }
+    }
+
+    function addCitedText(target, answer, sourceCount) {
+      const marker = /\[S(\d+)\]/g;
+      let cursor = 0;
+      for (const match of answer.matchAll(marker)) {
+        target.append(document.createTextNode(answer.slice(cursor, match.index)));
+        const sourceNumber = Number(match[1]);
+        if (sourceNumber >= 1 && sourceNumber <= sourceCount) {
+          const link = textNode("a", "inline-citation", match[0]);
+          link.href = `#answer-source-${sourceNumber}`;
+          link.title = `Jump to source ${match[0]}`;
+          link.addEventListener("click", () => {
+            const source = byId(`answer-source-${sourceNumber}`);
+            if (source) source.open = true;
+          });
+          target.append(link);
+        } else {
+          target.append(document.createTextNode(match[0]));
+        }
+        cursor = match.index + match[0].length;
+      }
+      target.append(document.createTextNode(answer.slice(cursor)));
+    }
+
+    async function generateAnswer() {
+      if (!currentQuestion || !answerEvidenceReady) return;
+      const requestVersion = answerVersion;
+      const button = byId("answerButton");
+      const panel = byId("answerPanel");
+      button.disabled = true;
+      panel.hidden = false;
+      panel.replaceChildren();
+      const loading = document.createElement("article");
+      loading.className = "answer-paper";
+      loading.append(textNode("h3", "", "Preparing your answer"));
+      loading.append(textNode("p", "callout", "Reviewing the selected passages and preparing linked citations…"));
+      loading.setAttribute("aria-busy", "true");
+      panel.append(loading);
+      try {
+        const response = await fetch("/api/answer", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({question: currentQuestion, mode: currentMode, k: currentK})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Answer request failed (${response.status})`);
+        if (requestVersion !== answerVersion) return;
+        const card = document.createElement("article");
+        card.className = "answer-paper";
+        card.append(textNode("h3", "", "Cited answer"));
+        const answer = document.createElement("p");
+        answer.className = "answer-text";
+        addCitedText(answer, data.answer, data.sources.length);
+        card.append(answer);
+        if (data.sources.length) {
+          const refs = document.createElement("div");
+          refs.className = "answer-sources";
+          refs.append(textNode("h4", "", "Sources used in this answer"));
+          data.sources.forEach((source, index) => {
+            const number = index + 1;
+            const details = document.createElement("details");
+            details.className = "answer-source";
+            details.id = `answer-source-${number}`;
+            const sourceTitle = source.title || source.citation;
+            const sourceYear = source.year ? ` · ${source.year}` : "";
+            const scoreLabels = {bm25: "BM25", dense: "cosine", hybrid: "RRF"};
+            const sourceScore = Number.isFinite(Number(source.score)) ? ` · ${scoreLabels[currentMode] || "retrieval"} ${Number(source.score).toFixed(4)}` : "";
+            const summary = textNode("summary", "", `[S${number}] ${sourceTitle}${sourceYear} · ${source.citation}${source.section ? ` · ${source.section}` : ""}${sourceScore}`);
+            details.append(summary, textNode("p", "passage-text", source.evidence));
+            refs.append(details);
+          });
+          card.append(refs);
+        }
+        panel.replaceChildren(card);
+      } catch (error) {
+        if (requestVersion !== answerVersion) return;
+        const message = document.createElement("div");
+        message.className = "callout error";
+        message.append(textNode("p", "", `The answer could not be prepared. ${error.message}`));
+        const retry = textNode("button", "button", "Try again");
+        retry.type = "button";
+        retry.addEventListener("click", generateAnswer);
+        message.append(retry);
+        panel.replaceChildren(message);
+      } finally {
+        button.disabled = !answerEvidenceReady;
+      }
+    }
+
+    function renderPapers() {
+      const query = byId("paperFilter").value.trim().toLowerCase();
+      const filter = byId("statusFilter").value;
+      const root = byId("paperGrid");
+      root.replaceChildren();
+      const visible = catalog.filter(paper => {
+        const matchesText = `${paper.title} ${paper.authors} ${paper.topic}`.toLowerCase().includes(query);
+        const matchesStatus = filter === "all" || (filter === "downloaded" ? paper.downloaded : !paper.downloaded);
+        return matchesText && matchesStatus;
+      });
+      if (!visible.length) {
+        root.append(textNode("div", "empty-state", query ? "No records match that search. Try a broader title, author, or topic." : "No records are available."));
+        byId("catalogStatus").textContent = "0 records";
+        return;
+      }
+      visible.forEach(paper => {
+        const row = document.createElement("article");
+        row.className = "paper-row";
+        const details = document.createElement("div");
+        details.append(textNode("h2", "paper-title", paper.title));
+        details.append(textNode("div", "paper-details", `${paper.authors} · ${paper.year}`));
+        details.append(textNode("div", "paper-topic", paper.topic));
+        const statusText = paper.index_refresh_pending ? "BM25 ready · vector refresh needed" : paper.indexed ? "Full text indexed" : paper.downloaded ? "PDF available" : "Catalogue record only";
+        const statusClass = paper.index_refresh_pending ? "paper-status needs-refresh" : `paper-status${paper.downloaded ? "" : " catalog-only"}`;
+        details.append(textNode("span", statusClass, statusText));
+        if (paper.source_url) {
+          const link = textNode("a", "paper-action", "Open source record");
+          link.href = paper.source_url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          details.append(link);
+        } else {
+          details.append(textNode("span", "paper-action", "Local upload"));
+        }
+        row.append(details);
+        root.append(row);
+      });
+      byId("catalogStatus").textContent = `${visible.length} of ${catalog.length} records`;
+    }
+
+    function renderMetrics(metrics) {
+      const root = byId("metricGrid");
+      root.replaceChildren();
+      if (!metrics || !metrics.metrics_are_current) {
+        const message = metrics
+          ? "The paper collection changed after these benchmark numbers were produced. Refresh the vector index, review and promote question drafts as appropriate, then rerun evaluation before comparing methods."
+          : "Benchmark results are not available yet. Run the evaluation against the current index to publish a current comparison.";
+        root.append(textNode("div", "empty-state", message));
+        return;
+      }
+      byId("metricsNote").textContent = `${metrics.questions} source-first questions across ${metrics.corpus_papers} full texts · one question per paper · English queries`;
+      const tableWrap = document.createElement("div");
+      tableWrap.className = "metrics-table-wrap";
+      const table = document.createElement("table");
+      table.className = "metrics-table";
+      const head = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      for (const label of ["Method", "Recall@10", "nDCG@10", "MRR@10", "p50", "p95"]) headerRow.append(textNode("th", "", label));
+      head.append(headerRow);
+      table.append(head);
+      const body = document.createElement("tbody");
+      const methods = [["dense", "Dense BGE"], ["bm25", "BM25"], ["hybrid", "Hybrid RRF"]];
+      for (const [key, label] of methods) {
+        const score = metrics.systems?.[key];
+        if (!score) continue;
+        const row = document.createElement("tr");
+        if (key === "hybrid") row.className = "best";
+        for (const value of [label, Number(score.recall_at_10).toFixed(3), Number(score.ndcg_at_10).toFixed(3), Number(score.mrr_at_10).toFixed(3), `${score.latency_p50_ms} ms`, `${score.latency_p95_ms} ms`]) {
+          row.append(textNode("td", "", value));
+        }
+        body.append(row);
+      }
+      table.append(body);
+      tableWrap.append(table);
+      root.append(tableWrap);
+      root.append(textNode("p", "metrics-footnote", "Scores measure passage retrieval, not answer correctness. Compare latency on the same machine; dense and hybrid include model inference."));
+    }
+
+    function renderCollectionStats(overview) {
+      const metrics = overview.metrics || {};
+      const hybridRecall = metrics.systems?.hybrid?.recall_at_10;
+      const metricsCurrent = metrics.metrics_are_current === true;
+      currentBenchmarkMetrics = metricsCurrent ? metrics : null;
+      currentBenchmarkQuestionCount = Number(overview.evaluation_questions || 0);
+      byId("statPapers").textContent = Number(overview.local_pdfs || 0).toLocaleString();
+      byId("statPassages").textContent = metricsCurrent ? Number(metrics.indexed_chunks || 0).toLocaleString() : "—";
+      byId("statQuestions").textContent = Number(overview.evaluation_questions || 0).toLocaleString();
+      byId("statHybridRecall").textContent = metricsCurrent && typeof hybridRecall === "number" && Number.isFinite(hybridRecall) ? hybridRecall.toFixed(3) : "—";
+      byId("statHybridRecall").title = "Hybrid retrieval Recall@10 on the source-first benchmark";
+      byId("statHybridRecall").parentElement.setAttribute("aria-label", `Hybrid Recall at 10: ${byId("statHybridRecall").textContent}`);
+      document.querySelector(".stats-context").textContent = metricsCurrent
+        ? `${overview.evaluation_questions} English, source-first questions · Retrieval measures passage ranking, not answer correctness.`
+        : "Collection counts are live; benchmark figures are hidden until the index and evaluation data are current.";
+      const noticeText = overview.index_refresh_pending
+        ? "New PDF files are available to BM25. Dense and hybrid still use the previous vector index. Run `python scripts/rebuild_local_index.py` from the project folder, clear any explicit QDRANT_PATH/RAG_COLLECTION settings, then restart the API. This builds a separate index and preserves the previous one."
+        : "";
+      for (const id of ["searchIndexNotice", "manageIndexNotice"]) {
+        byId(id).textContent = noticeText;
+        byId(id).hidden = !noticeText;
+      }
+    }
+
+    function renderQuestionSourceOptions() {
+      const select = byId("questionSource");
+      const selected = select.value;
+      select.replaceChildren(new Option("Choose an available full text", ""));
+      catalog.filter(paper => paper.downloaded && paper.local_pdf).forEach(paper => {
+        select.add(new Option(`${paper.title} · ${paper.year}`, paper.local_pdf));
+      });
+      if ([...select.options].some(option => option.value === selected)) select.value = selected;
+    }
+
+    function renderQuestionDrafts(drafts) {
+      const root = byId("questionDraftList");
+      root.replaceChildren();
+      byId("draftCount").textContent = `${drafts.length} saved · awaiting manual review`;
+      if (!drafts.length) {
+        root.append(textNode("div", "empty-state", "No question drafts yet. Select a paper passage in the form above to create the first one."));
+        return;
+      }
+      drafts.slice().reverse().forEach(draft => {
+        const row = document.createElement("article");
+        row.className = "draft-row";
+        const body = document.createElement("div");
+        body.append(textNode("p", "draft-query", draft.query));
+        const evidence = draft.gold_evidence?.[0] || {};
+        const paper = catalog.find(item => item.id === evidence.source_id);
+        body.append(textNode("div", "draft-meta", `${paper?.title || evidence.local_pdf || "Source paper"} · ${evidence.location || "page not recorded"} · ${draft.expected_claim}`));
+        row.append(body, textNode("span", "draft-badge", "Review pending"));
+        root.append(row);
+      });
+    }
+
+    async function loadQuestionDrafts() {
+      try {
+        renderQuestionSourceOptions();
+        renderQuestionDrafts(await getJSON("/api/questions/drafts"));
+      } catch (error) {
+        byId("draftCount").textContent = "Drafts could not be loaded";
+        byId("questionDraftList").replaceChildren(textNode("div", "empty-state", error.message));
+      }
+    }
+
+    function setManageMessage(id, message, kind = "") {
+      const node = byId(id);
+      node.className = `manage-message ${kind}`.trim();
+      node.textContent = message;
+    }
+
+    byId("paperUploadForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const button = byId("paperUploadButton");
+      const form = event.currentTarget;
+      const file = byId("paperFile").files[0];
+      if (!file) return;
+      button.disabled = true;
+      setManageMessage("paperUploadMessage", "Checking the PDF and saving its source record…");
+      try {
+        const response = await fetch("/api/papers/upload", {method: "POST", body: new FormData(form)});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Upload failed (${response.status})`);
+        const title = byId("paperTitle").value.trim();
+        setManageMessage("paperUploadMessage", `${data.message} Saved as ${data.filename} (${data.pages} pages).`, "success");
+        form.reset();
+        byId("paperYear").value = "2024";
+        catalog = await getJSON("/api/papers");
+        renderPapers();
+        renderQuestionSourceOptions();
+        const overview = await getJSON("/api/overview");
+        renderCollectionStats(overview);
+        byId("query").value = title;
+        byId("mode").value = "bm25";
+        await runSearch(false);
+      } catch (error) {
+        setManageMessage("paperUploadMessage", error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    byId("questionDraftForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const button = byId("questionDraftButton");
+      const questionForm = event.currentTarget;
+      const form = new FormData(questionForm);
+      const payload = Object.fromEntries(form.entries());
+      payload.page = Number(payload.page);
+      button.disabled = true;
+      setManageMessage("questionDraftMessage", "Verifying that the passage is on the selected PDF page…");
+      try {
+        const response = await fetch("/api/questions/drafts", {
+          method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Could not save the draft (${response.status})`);
+        questionForm.reset();
+        setManageMessage("questionDraftMessage", "Saved as a review-pending draft. The active benchmark has not changed.", "success");
+        await loadQuestionDrafts();
+      } catch (error) {
+        setManageMessage("questionDraftMessage", error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    function markSearchSettingsChanged() {
+      if (!currentQuestion) return;
+      answerEvidenceReady = false;
+      answerVersion += 1;
+      byId("answerButton").disabled = true;
+      byId("answerWorkflowNote").textContent = "Settings changed. Search again to refresh the evidence before generating an answer.";
+      byId("answerPanel").hidden = true;
+      if (byId("results").getAttribute("aria-busy") === "true") {
+        byId("results").replaceChildren(
+          textNode("div", "empty-state", "Settings changed while search was running. Search again to update the passages.")
+        );
+      }
+      setStatus("Ranking settings changed. Search again to update the passages.");
+    }
+
+    byId("searchForm").addEventListener("submit", event => { event.preventDefault(); runSearch(false); });
+    byId("compareButton").addEventListener("click", () => runSearch(true));
+    byId("answerButton").addEventListener("click", generateAnswer);
+    byId("query").addEventListener("input", () => {
+      if (byId("query").value.trim() === currentQuestion) return;
+      answerEvidenceReady = false;
+      answerVersion += 1;
+      byId("answerButton").disabled = true;
+      byId("answerWorkflowNote").textContent = currentQuestion
+        ? "Question changed. Search again to refresh the evidence before generating an answer."
+        : "Search first to enable answer generation. Citations link to the exact passages used.";
+      byId("answerPanel").hidden = true;
+      if (byId("results").getAttribute("aria-busy") === "true") {
+        byId("results").replaceChildren(
+          textNode("div", "empty-state", "Question changed while search was running. Search again to update the passages.")
+        );
+      }
+    });
+    byId("mode").addEventListener("change", markSearchSettingsChanged);
+    byId("k").addEventListener("change", markSearchSettingsChanged);
+    document.querySelectorAll("[data-query]").forEach(button => button.addEventListener("click", () => {
+      byId("query").value = button.dataset.query;
+      runSearch(false);
+    }));
+    byId("paperFilter").addEventListener("input", renderPapers);
+    byId("statusFilter").addEventListener("change", renderPapers);
+
+    async function initialize() {
+      try {
+        const [overview, papers] = await Promise.all([getJSON("/api/overview"), getJSON("/api/papers")]);
+        catalog = papers;
+        renderCollectionStats(overview);
+        renderPapers();
+        renderQuestionSourceOptions();
+        renderMetrics(overview.metrics);
+        setStatus("Loading an example search from the current paper collection…");
+        await runSearch(false);
+      } catch (error) {
+        byId("catalogStatus").textContent = "The catalogue could not be loaded.";
+        byId("paperGrid").replaceChildren(textNode("div", "empty-state", `Could not load the catalogue. ${error.message}`));
+        byId("metricGrid").replaceChildren(textNode("div", "empty-state", "Benchmark data could not be loaded."));
+      }
+    }
+    initialize();
+  </script>
+</body>
+</html>

@@ -17,13 +17,15 @@ from pathlib import Path
 import boto3
 from pypdf import PdfReader
 
-from rag.config import AWS_REGION
+from rag.config import AWS_REGION, EMBEDDING_MAX_SEQ_LENGTH, MODEL_NAME
 
 DATA_DIR = Path(os.environ.get("RAG_DATA_DIR", "data/hindi_indic"))
 S3_BUCKET = os.environ.get("RAG_S3_BUCKET")  # if set, read PDFs from S3; otherwise from data/
 
-CHUNK_SIZE = 2000      # characters, ~500 tokens
-CHUNK_OVERLAP = 200    # ~10% overlap so context isn't lost at chunk boundaries
+# Use the same Hugging Face tokenizer as the document encoder. Leave 32 positions
+# for special tokens and keep evidence spans intact across chunk boundaries.
+CHUNK_SIZE_TOKENS = max(8, EMBEDDING_MAX_SEQ_LENGTH - 32)
+CHUNK_OVERLAP_TOKENS = min(128, CHUNK_SIZE_TOKENS // 3)
 
 
 def _sanitize_extracted_text(text: str) -> str:
@@ -157,10 +159,13 @@ def load_chunks() -> list[dict]:
     # index. Importing it at module level made every consumer pay for it —
     # including the API, which never chunks anything at query time.
     from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from transformers import AutoTokenizer
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+        tokenizer,
+        chunk_size=CHUNK_SIZE_TOKENS,
+        chunk_overlap=CHUNK_OVERLAP_TOKENS,
     )
     chunks: list[dict] = []
     for source, text, spans in _load_documents():

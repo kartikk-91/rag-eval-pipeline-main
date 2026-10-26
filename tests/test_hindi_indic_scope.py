@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from evaluation.eval_harness import EvalExample, _passage_in_chunk, evaluate, load_eval_set
-from rag.generate import citations_are_valid
+from rag.generate import citation_validation_error, citations_are_valid, normalize_citation_markers
 from rag.ingest import _sanitize_extracted_text
 from rag.retriever import tokenize
 from rag.types import Chunk
@@ -30,6 +30,36 @@ def test_claim_sentences_need_in_range_citations():
     assert not citations_are_valid("Hindi data is used [S3].", 2)
     assert citations_are_valid("I don't know.", 2)
     assert not citations_are_valid("I don't know. This unrelated claim is true [S1].", 2)
+
+
+def test_citation_validator_handles_numbered_answers_and_common_abbreviations():
+    answer = "1. Dr. Rao's method uses Hindi mentions [S1].\n2. It reports an F1 score [S2]."
+    assert citations_are_valid(answer, 2)
+
+
+def test_grouped_citations_are_normalized_for_clickable_source_links():
+    assert normalize_citation_markers("The results are comparable [S1, S2].") == (
+        "The results are comparable [S1][S2]."
+    )
+    assert citations_are_valid("The results are comparable (S1, S2).", 2)
+
+
+def test_trailing_citation_after_sentence_punctuation_moves_inline():
+    answer = "The method uses mentions. [S1] It reports an F1 score. [S2]"
+    assert normalize_citation_markers(answer) == (
+        "The method uses mentions [S1]. It reports an F1 score [S2]."
+    )
+    assert citations_are_valid(answer, 2)
+
+
+def test_validator_reports_why_a_model_draft_was_withheld():
+    assert citation_validation_error("This is a factual claim.", 2) == "missing_citation"
+    assert citation_validation_error("A claim cites an unavailable source [S3].", 2) == (
+        "invalid_source_label"
+    )
+    assert citation_validation_error("First claim [S1]. Second claim is uncited.", 2) == (
+        "uncited_sentence"
+    )
 
 
 def test_active_questions_are_source_first_and_labeled():

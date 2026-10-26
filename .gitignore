@@ -238,3 +238,5 @@ terraform.tfvars
 # Local generated Hindi/Indic indexes and test scratch
 qdrant_hindi_indic_showcase_*/
 .pytest-tmp-*/
+qdrant_hindi_indic_benchmark_*/
+qdrant_hindi_indic_added_*/

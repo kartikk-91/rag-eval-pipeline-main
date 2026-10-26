@@ -11,7 +11,13 @@ from typing import TYPE_CHECKING
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
-from rag.config import COLLECTION, MODEL_NAME, VECTOR_SIZE, make_client
+from rag.config import (
+    COLLECTION,
+    VECTOR_SIZE,
+    load_embedding_model,
+    make_client,
+    validate_embedding_inputs,
+)
 from rag.ingest import load_chunks
 
 if TYPE_CHECKING:  # import costs ~13s (torch); only needed when actually indexing
@@ -27,6 +33,10 @@ def build_index(
     if not chunks:
         return 0
 
+    longest = validate_embedding_inputs(model, [c["text"] for c in chunks])
+    print(
+        f"Validated {len(chunks)} passages: longest is {longest}/{model.max_seq_length} tokens."
+    )
     vectors = model.encode(
         [c["text"] for c in chunks],
         normalize_embeddings=True,
@@ -75,11 +85,9 @@ def main() -> None:
         return
 
     # No model download or heavyweight import if the local corpus is absent.
-    from sentence_transformers import SentenceTransformer
-
     from rag.retriever import DenseRetriever
 
-    model = SentenceTransformer(MODEL_NAME)
+    model = load_embedding_model()
     indexed = build_index(client, model, chunks)
     print(f"Indexed {indexed} chunks.\n")
 

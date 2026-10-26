@@ -1,0 +1,393 @@
+{
+  "schema_version": 1,
+  "questions": 45,
+  "indexed_chunks": 2608,
+  "informative_term_document_frequency_max": 26,
+  "mean_informative_query_term_overlap_with_gold": 0.2111,
+  "mean_best_same_paper_non_gold_overlap": 0.4667,
+  "all_gold_passages_found": true,
+  "interpretation": "Wording diagnostic only. High overlap can favor lexical retrieval; it does not prove leakage or invalidate source-first evidence labels.",
+  "per_question": [
+    {
+      "id": "deephcoref-system",
+      "informative_query_terms": [
+        "deephcoref"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "end-to-end-coref-mentions",
+      "informative_query_terms": [
+        "idea"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "spanbert-pretraining",
+      "informative_query_terms": [
+        "spanbert"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "knowref-challenge",
+      "informative_query_terms": [
+        "kind",
+        "knowref"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.5,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "lea-coref-metric",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicnlpsuite-resources",
+      "informative_query_terms": [
+        "indicnlpsuite",
+        "kinds"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.5,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicxtreme-scope",
+      "informative_query_terms": [
+        "indicxtreme"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicxnli-languages",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicbart-language-coverage",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-pos-dataset",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-crosslingual-qg",
+      "informative_query_terms": [
+        "assume"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "code-mixed-qa-languages",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "gluecos-language-pairs",
+      "informative_query_terms": [
+        "gluecos"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-english-pos-twitter",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-english-dependency-parsing",
+      "informative_query_terms": [
+        "switch"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "samanantar-size",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indictrans2-coverage",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indic-transliteration-size",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "miracl-judgments",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "xlmr-language-scale",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "mbert-crosslingual-transfer",
+      "informative_query_terms": [
+        "typologically"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "low-resource-methods",
+      "informative_query_terms": [
+        "cite"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "mcecr-hindi-languages",
+      "informative_query_terms": [
+        "mcecr"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicirsuite-resources",
+      "informative_query_terms": [
+        "indicirsuite"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "comi-lingua-tasks",
+      "informative_query_terms": [
+        "comi",
+        "lingua"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicsquad-data-source",
+      "informative_query_terms": [
+        "indicsquad"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indic-qa-scope",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "milu-scope",
+      "informative_query_terms": [
+        "subjects"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-llm-benchmarks",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indibias-augmentation",
+      "informative_query_terms": [
+        "augmenting",
+        "indibias"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.5,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicnlg-language-coverage",
+      "informative_query_terms": [
+        "indicnlg"
+      ],
+      "gold_overlap": 1.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "transmucores-hindi-coreference",
+      "informative_query_terms": [
+        "combined",
+        "transmucores"
+      ],
+      "gold_overlap": 0.5,
+      "best_same_paper_non_gold_overlap": 0.5,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hiner-dataset-size",
+      "informative_query_terms": [
+        "hiner"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-timebank-annotations",
+      "informative_query_terms": [
+        "kinds",
+        "timebank"
+      ],
+      "gold_overlap": 0.5,
+      "best_same_paper_non_gold_overlap": 0.5,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-beir-scope",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "indicgenbench-tasks",
+      "informative_query_terms": [
+        "indicgenbench"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "naamapadam-data-coverage",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "comumdr-modalities",
+      "informative_query_terms": [
+        "modalities"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-continued-pretraining",
+      "informative_query_terms": [
+        "nemotron"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "iltur-language-coverage",
+      "informative_query_terms": [],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-syntax-evaluation",
+      "informative_query_terms": [
+        "controlled",
+        "tests"
+      ],
+      "gold_overlap": 0.5,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "hindi-verb-alternation-benchmark",
+      "informative_query_terms": [
+        "alternation"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "corefud-shared-task-scale",
+      "informative_query_terms": [
+        "crac"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 1.0,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "cost-hindi-translation-domains",
+      "informative_query_terms": [
+        "cost",
+        "kinds"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.5,
+      "gold_passage_found_in_index": true
+    },
+    {
+      "id": "aima-conversation-context",
+      "informative_query_terms": [
+        "aima"
+      ],
+      "gold_overlap": 0.0,
+      "best_same_paper_non_gold_overlap": 0.0,
+      "gold_passage_found_in_index": true
+    }
+  ]
+}

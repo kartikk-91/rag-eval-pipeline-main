@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "corpus_papers": 45,
+  "indexed_chunks": 1686,
+  "questions": 45,
+  "question_design": "One source-first abstract passage per local paper. Gold passages were checked against their own ingested PDFs before retrieval. Human query, expected-answer, and claim-to-citation review remains pending; lexical overlap may favor BM25.",
+  "systems": {
+    "bm25": {
+      "recall_at_1": 0.311,
+      "recall_at_5": 0.667,
+      "recall_at_10": 0.822,
+      "ndcg_at_10": 0.569,
+      "mrr_at_10": 0.474,
+      "latency_ms": 47
+    },
+    "hybrid": {
+      "recall_at_1": 0.111,
+      "recall_at_5": 0.311,
+      "recall_at_10": 0.533,
+      "ndcg_at_10": 0.291,
+      "mrr_at_10": 0.218,
+      "latency_ms": 283
+    },
+    "dense": {
+      "recall_at_1": 0.0,
+      "recall_at_5": 0.067,
+      "recall_at_10": 0.156,
+      "ndcg_at_10": 0.063,
+      "mrr_at_10": 0.036,
+      "latency_ms": 573
+    }
+  },
+  "confidence_interval_note": "Recall@10 hybrid 95% CI [0.378, 0.689]. compare_retrievers intervals are candidate-vs-dense; do not interpret them as a BM25-vs-hybrid interval.",
+  "latency_note": "Measured locally on CPU in separate runs; indicative only and hardware-dependent.",
+  "metrics_are_current": false,
+  "note": "Current 45-paper, 1,686-chunk showcase index and 45-question source-first set. Retrieval metrics only; answer faithfulness and citation entailment have not been human-reviewed.",
+  "status": "historical-v2; superseded by the 384-token, smaller-chunk benchmark index"
+}

@@ -26,5 +26,6 @@ jobs:
       - name: Tests
         run: pytest tests/ -q -rs
 
-      # Legacy vector snapshots and retrieval scores refer to a different corpus.
-      # Add a new retrieval gate only after legal PDFs and passage labels are reviewed.
+      # Licensed PDFs and model weights are intentionally not committed, so CI
+      # checks pipeline contracts and review schemas without downloading a corpus
+      # or asserting the machine-specific local retrieval baseline.

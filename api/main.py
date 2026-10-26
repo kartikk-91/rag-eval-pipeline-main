@@ -1,23 +1,34 @@
 """FastAPI service exposing the RAG pipeline."""
 
 import csv
+import hashlib
+import ipaddress
 import json
 import logging
 import os
+import re
+import threading
 import time
+import unicodedata
 import uuid
 from collections import defaultdict, deque
 from contextlib import nullcontext
 from functools import lru_cache
+from io import BytesIO
 from pathlib import Path
+from typing import Annotated
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
 
 ROOT = Path(__file__).resolve().parents[1]
-_SHOWCASE_INDEX_NAME = "qdrant_hindi_indic_showcase_20261025_v2"
-_SHOWCASE_COLLECTION = "hindi_indic_showcase_20261025_v2"
+_SHOWCASE_INDEX_NAME = "qdrant_hindi_indic_benchmark_20261025_v5"
+_SHOWCASE_COLLECTION = "hindi_indic_benchmark_20261025_v5"
+MAX_PDF_BYTES = 25 * 1024 * 1024
+MAX_PDF_PAGES = 1000
 
 
 def _configure_local_showcase_defaults(project_root: Path = ROOT) -> None:
@@ -30,24 +41,51 @@ def _configure_local_showcase_defaults(project_root: Path = ROOT) -> None:
     if any(name in os.environ for name in ("QDRANT_PATH", "QDRANT_HOST", "QDRANT_BAKED_INDEX")):
         return
 
+    data_dir = Path(os.environ.get("RAG_DATA_DIR", project_root / "data" / "hindi_indic"))
     local_index = project_root / _SHOWCASE_INDEX_NAME
+    collection = _SHOWCASE_COLLECTION
+    pointer_path = data_dir / ".local_index.json"
+    pointer_is_current = False
+    try:
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+        candidate = (project_root / pointer["index_path"]).resolve()
+        if candidate.is_relative_to(project_root.resolve()) and candidate.is_dir():
+            local_index = candidate
+            collection = pointer["collection"]
+            expected = pointer.get("pdf_state", {})
+            current = {
+                pdf.name: {"size": pdf.stat().st_size, "mtime_ns": pdf.stat().st_mtime_ns}
+                for pdf in data_dir.glob("*.pdf")
+            }
+            pointer_is_current = expected == current
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
     if not local_index.is_dir():
         return
+    metadata_path = local_index / "meta.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if collection not in metadata.get("collections", {}):
+        return
+    if pointer_is_current:
+        (data_dir / ".index-refresh-needed.json").unlink(missing_ok=True)
 
     os.environ.setdefault("QDRANT_PATH", str(local_index))
-    os.environ.setdefault("RAG_COLLECTION", _SHOWCASE_COLLECTION)
-    local_papers = project_root / "data" / "hindi_indic"
-    if local_papers.is_dir():
-        os.environ.setdefault("RAG_DATA_DIR", str(local_papers))
+    os.environ.setdefault("RAG_COLLECTION", collection)
+    if data_dir.is_dir():
+        os.environ.setdefault("RAG_DATA_DIR", str(data_dir))
 
 
 _configure_local_showcase_defaults()
 
 from rag import telemetry, tracing  # noqa: E402
 from rag.errors import PermanentGenerationError, TransientGenerationError  # noqa: E402
-from rag.generate import answer_question  # noqa: E402
-from rag.ingest import DATA_DIR  # noqa: E402
+from rag.generate import answer_question, generate_from_chunks  # noqa: E402
+from rag.ingest import DATA_DIR, S3_BUCKET, load_chunks  # noqa: E402
 from rag.retriever import BM25Retriever, DenseRetriever, HybridRetriever  # noqa: E402
+from rag.types import Chunk  # noqa: E402
 
 telemetry.configure_logging()
 app = FastAPI(title="RAG Evaluation Pipeline")
@@ -61,8 +99,21 @@ _hits: dict[str, deque[float]] = defaultdict(deque)
 
 
 @app.middleware("http")
+async def limit_pdf_upload_size(request: Request, call_next):
+    if request.url.path == "/api/papers/upload":
+        raw_length = request.headers.get("content-length")
+        try:
+            content_length = int(raw_length) if raw_length is not None else 0
+        except ValueError:
+            content_length = 0
+        if content_length > MAX_PDF_BYTES + 1024 * 1024:
+            return JSONResponse(status_code=413, content={"detail": "PDF uploads must be 25 MB or smaller."})
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def rate_limit(request: Request, call_next):
-    if request.url.path != "/ask":
+    if request.url.path not in {"/ask", "/api/answer"}:
         return await call_next(request)
 
     client = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
@@ -100,7 +151,11 @@ async def observe(request: Request, call_next):
         # its ID is derived from request_id, which is what joins the two records.
         # Only /ask: a page load or a health check has nothing to show, and tracing
         # one would spend quota to bury the questions under empty traces.
-        traced = tracing.request(request_id) if request.url.path == "/ask" else nullcontext(tracing.OFF)
+        traced = (
+            tracing.request(request_id)
+            if request.url.path in {"/ask", "/api/answer"}
+            else nullcontext(tracing.OFF)
+        )
         with traced as root:
             response = await call_next(request)
             root.update(
@@ -151,6 +206,9 @@ class AskRequest(BaseModel):
 class Source(BaseModel):
     chunk_id: str
     citation: str
+    title: str = ""
+    authors: str = ""
+    year: int = 0
     section: str | None = None
     score: float
     evidence: str
@@ -163,11 +221,12 @@ class AskResponse(BaseModel):
 
 class SearchRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
-    mode: str = Field(default="bm25", pattern="^(bm25|hybrid)$")
+    mode: str = Field(default="bm25", pattern="^(bm25|dense|hybrid)$")
     k: int = Field(default=5, ge=1, le=10)
 
 
 class SearchSource(BaseModel):
+    chunk_id: str
     citation: str
     title: str
     authors: str
@@ -183,15 +242,61 @@ class SearchResponse(BaseModel):
     results: list[SearchSource]
 
 
+class BenchmarkSystem(BaseModel):
+    name: str
+    latency_ms: float
+    results: list[SearchSource]
+
+
+class BenchmarkResponse(BaseModel):
+    question: str
+    initialization_ms: float
+    systems: list[BenchmarkSystem]
+
+
+class BenchmarkRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    k: int = Field(default=5, ge=1, le=10)
+
+
+class QuestionDraftRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    expected_claim: str = Field(min_length=8, max_length=700)
+    source_pdf: str = Field(min_length=1, max_length=200)
+    page: int = Field(ge=1, le=MAX_PDF_PAGES)
+    section: str = Field(default="", max_length=120)
+    passage_text: str = Field(min_length=40, max_length=2000)
+
+
 CATALOG_PATH = ROOT / "scripts" / "hindi_indic_papers.csv"
 EVAL_PATH = ROOT / "evaluation" / "eval_set.jsonl"
+QUESTION_DRAFT_PATH = ROOT / "evaluation" / "question_drafts.jsonl"
 METRICS_PATH = ROOT / "evaluation" / "hindi_indic_baseline.json"
+INDEX_PENDING_PATH = DATA_DIR / ".index-refresh-needed.json"
+_CONTENT_LOCK = threading.Lock()
 
 
 @lru_cache(maxsize=1)
 def _bm25_searcher() -> BM25Retriever:
-    # The presentation demo's default is entirely local and does not load an
-    # embedding model or contact AWS. It reads the already built Qdrant payloads.
+    # An uploaded PDF is immediately available to local BM25 without waiting for
+    # vector encoding. Dense/hybrid use the last built Qdrant snapshot until the
+    # user creates a fresh versioned index with scripts/rebuild_local_index.py.
+    if _pending_index_files():
+        return BM25Retriever(
+            [
+                Chunk(
+                    chunk_id=row["chunk_id"],
+                    document_id=row["document_id"],
+                    source=row["source"],
+                    text=row["text"],
+                    score=0.0,
+                    page=row["page"],
+                    section=row["section"],
+                )
+                for row in load_chunks()
+            ]
+        )
+    # Otherwise reuse the exact passages stored in Qdrant for parity with dense.
     store = DenseRetriever(load_model=False)
     try:
         return BM25Retriever(store.all_chunks())
@@ -200,14 +305,119 @@ def _bm25_searcher() -> BM25Retriever:
 
 
 @lru_cache(maxsize=1)
+def _dense_searcher() -> DenseRetriever:
+    # Optional neural baseline; model and Qdrant client are cached after selection.
+    return DenseRetriever()
+
+
+@lru_cache(maxsize=1)
 def _hybrid_searcher() -> HybridRetriever:
-    # Optional comparison mode; dense weights are loaded only when selected.
-    return HybridRetriever()
+    # Share exactly the same dense and BM25 instances used by the other baselines.
+    # Build BM25 first because embedded Qdrant permits one open client per path.
+    bm25 = _bm25_searcher()
+    dense = _dense_searcher()
+    return HybridRetriever(dense=dense, bm25=bm25)
 
 
 def _catalog_rows() -> list[dict[str, str]]:
     with CATALOG_PATH.open(encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream))
+
+
+def _pending_index_files() -> set[str]:
+    try:
+        data = json.loads(INDEX_PENDING_PATH.read_text(encoding="utf-8"))
+        return {Path(name).name.casefold() for name in data.get("files", [])}
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def _local_admin_only(request: Request) -> None:
+    """Keep filesystem-writing endpoints unavailable to remote visitors/deployments."""
+    host = request.client.host if request.client else ""
+    if host == "testclient":
+        return
+    try:
+        local = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        local = False
+    origin = request.headers.get("origin")
+    same_origin = not origin or urlparse(origin).netloc.casefold() == request.url.netloc.casefold()
+    if not local or not same_origin or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"):
+        raise HTTPException(status_code=403, detail="Content management is available in local development only.")
+
+
+def _filename_for_paper(paper_id: str, title: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")[:48] or "paper"
+    return f"{paper_id.zfill(2)}-{slug}.pdf"
+
+
+def _atomic_write_catalog(rows: list[dict[str, str]]) -> None:
+    CATALOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = CATALOG_PATH.with_name(f".{CATALOG_PATH.name}.{uuid.uuid4().hex}.tmp")
+    fields = ["id", "title", "authors", "year", "topic", "why_in_scope", "source_url", "pdf_url", "license_terms", "status"]
+    try:
+        with temp_path.open("w", encoding="utf-8", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(rows)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, CATALOG_PATH)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _add_pending_index_file(filename: str) -> None:
+    INDEX_PENDING_PATH.parent.mkdir(parents=True, exist_ok=True)
+    pending = _pending_index_files()
+    pending.add(filename.casefold())
+    temp_path = INDEX_PENDING_PATH.with_name(f".{INDEX_PENDING_PATH.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(
+            json.dumps({"files": sorted(pending), "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(temp_path, INDEX_PENDING_PATH)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _validate_pdf(content: bytes) -> tuple[int, int]:
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="The selected file is not a valid PDF.")
+    try:
+        reader = PdfReader(BytesIO(content), strict=False)
+        if reader.is_encrypted:
+            raise HTTPException(status_code=422, detail="Password-protected PDFs are not supported.")
+        page_count = len(reader.pages)
+        if page_count < 1 or page_count > MAX_PDF_PAGES:
+            raise HTTPException(status_code=422, detail=f"PDF must contain 1–{MAX_PDF_PAGES} pages.")
+        extracted_chars = sum(len(page.extract_text() or "") for page in reader.pages)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="The PDF could not be read. Check that it is not damaged.") from exc
+    if extracted_chars < 100:
+        raise HTTPException(status_code=422, detail="This PDF has too little extractable text. Scanned PDFs need OCR before upload.")
+    return page_count, extracted_chars
+
+
+def _next_paper_id(rows: list[dict[str, str]]) -> str:
+    numeric_ids = [int(row["id"]) for row in rows if row.get("id", "").isdigit()]
+    return str(max(numeric_ids, default=0) + 1)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _normalised_passage(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKC", text).split()).casefold()
 
 
 def _paper_for_source(source: str, rows: list[dict[str, str]]) -> dict[str, str] | None:
@@ -242,10 +452,27 @@ def overview() -> dict:
         metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         metrics = None
+    pending = _pending_index_files()
+    metrics = dict(metrics) if isinstance(metrics, dict) else None
+    if metrics is not None:
+        metrics["metrics_are_current"] = bool(
+            metrics.get("metrics_are_current")
+            and metrics.get("corpus_papers") == len(pdfs)
+            and not pending
+        )
+    try:
+        question_drafts = sum(
+            1 for line in QUESTION_DRAFT_PATH.read_text(encoding="utf-8").splitlines() if line.strip()
+        )
+    except OSError:
+        question_drafts = 0
     return {
         "catalog_papers": len(rows),
         "local_pdfs": len(pdfs),
         "evaluation_questions": questions,
+        "question_drafts": question_drafts,
+        "index_refresh_pending": bool(pending),
+        "pending_papers": sorted(pending),
         "metrics": metrics,
         "generation": "optional-bedrock",
     }
@@ -255,10 +482,11 @@ def overview() -> dict:
 def papers() -> list[dict]:
     rows = _catalog_rows()
     pdfs = {p.name.casefold() for p in DATA_DIR.glob("*.pdf")} if DATA_DIR.exists() else set()
+    pending = _pending_index_files()
     output = []
     for row in rows:
-        slug = "_".join("".join(ch.lower() if ch.isalnum() else " " for ch in row["title"]).split())[:48]
-        filename = f"{row['id'].zfill(2)}-{slug}.pdf".casefold()
+        filename = _filename_for_paper(row["id"], row["title"]).casefold()
+        downloaded = filename in pdfs
         output.append(
             {
                 "id": row["id"],
@@ -268,22 +496,209 @@ def papers() -> list[dict]:
                 "topic": row["topic"],
                 "status": row["status"],
                 "source_url": row["source_url"],
-                "downloaded": filename in pdfs,
+                "downloaded": downloaded,
+                "indexed": downloaded and filename not in pending,
+                "index_refresh_pending": downloaded and filename in pending,
+                "local_pdf": filename if downloaded else None,
             }
         )
     return output
 
 
+@app.post("/api/papers/upload", status_code=201)
+def upload_paper(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    title: Annotated[str, Form(min_length=3, max_length=240)],
+    authors: Annotated[str, Form(min_length=2, max_length=500)],
+    year: Annotated[int, Form(ge=1900, le=2100)],
+    topic: Annotated[str, Form(min_length=2, max_length=240)],
+    why_in_scope: Annotated[str, Form(min_length=5, max_length=600)],
+    license_notes: Annotated[str, Form(min_length=5, max_length=600)],
+    source_url: Annotated[str, Form(max_length=500)] = "",
+) -> dict:
+    """Add one validated local PDF and its provenance to the paper catalogue."""
+    _local_admin_only(request)
+    if S3_BUCKET:
+        raise HTTPException(status_code=409, detail="Local uploads are disabled while S3 ingestion is configured.")
+    if not file.filename or Path(file.filename).suffix.casefold() != ".pdf":
+        raise HTTPException(status_code=415, detail="Choose a file with a .pdf extension.")
+    if source_url:
+        parsed = urlparse(source_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise HTTPException(status_code=422, detail="Source links must use HTTPS.")
+
+    content = file.file.read(MAX_PDF_BYTES + 1)
+    if len(content) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="PDFs must be 25 MB or smaller.")
+    page_count, extracted_chars = _validate_pdf(content)
+    digest = hashlib.sha256(content).hexdigest()
+
+    with _CONTENT_LOCK:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        for existing in DATA_DIR.glob("*.pdf"):
+            existing_digest = _file_sha256(existing)
+            if existing_digest == digest:
+                raise HTTPException(status_code=409, detail=f"This PDF is already in the collection as {existing.name}.")
+
+        rows = _catalog_rows()
+        paper_id = _next_paper_id(rows)
+        filename = _filename_for_paper(paper_id, title)
+        destination = DATA_DIR / filename
+        while destination.exists():
+            paper_id = str(int(paper_id) + 1)
+            filename = _filename_for_paper(paper_id, title)
+            destination = DATA_DIR / filename
+        new_row = {
+            "id": paper_id,
+            "title": title.strip(),
+            "authors": authors.strip(),
+            "year": str(year),
+            "topic": topic.strip(),
+            "why_in_scope": why_in_scope.strip(),
+            "source_url": source_url.strip(),
+            "pdf_url": "",
+            "license_terms": (
+                f"User-supplied access/rights note: {license_notes.strip().rstrip(' .;')}. "
+                "Not independently verified; local upload only."
+            ),
+            "status": "user upload; rights not independently verified",
+        }
+        catalog_written = False
+        try:
+            with destination.open("xb") as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            _atomic_write_catalog([*rows, new_row])
+            catalog_written = True
+            _add_pending_index_file(filename)
+        except Exception as exc:
+            if catalog_written:
+                try:
+                    _atomic_write_catalog(rows)
+                except OSError:
+                    pass
+            destination.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail="The PDF could not be added to the local catalogue.") from exc
+
+    _bm25_searcher.cache_clear()
+    _hybrid_searcher.cache_clear()
+    return {
+        "id": paper_id,
+        "title": title.strip(),
+        "filename": filename,
+        "pages": page_count,
+        "extracted_characters": extracted_chars,
+        "bm25_ready": True,
+        "vector_index_pending": True,
+        "message": "Paper added. BM25 will include it on the next search; rebuild the vector index to update dense and hybrid retrieval.",
+    }
+
+
+@app.get("/api/questions/drafts")
+def get_question_drafts(request: Request) -> list[dict]:
+    _local_admin_only(request)
+    if not QUESTION_DRAFT_PATH.exists():
+        return []
+    drafts = []
+    for line_number, line in enumerate(QUESTION_DRAFT_PATH.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            drafts.append(json.loads(line))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=500, detail=f"Question draft file is invalid near line {line_number}.") from exc
+    return drafts
+
+
+@app.post("/api/questions/drafts", status_code=201)
+def add_question_draft(request: Request, draft: QuestionDraftRequest) -> dict:
+    """Store a source-first evaluation question without changing the active benchmark."""
+    _local_admin_only(request)
+    filename = Path(draft.source_pdf).name
+    if filename != draft.source_pdf or Path(filename).suffix.casefold() != ".pdf":
+        raise HTTPException(status_code=422, detail="Choose a PDF from the local collection.")
+    pdf_path = DATA_DIR / filename
+    if not pdf_path.is_file():
+        raise HTTPException(status_code=404, detail="That PDF is not available in the local collection.")
+    paper = next(
+        (row for row in _catalog_rows() if _filename_for_paper(row["id"], row["title"]).casefold() == filename.casefold()),
+        None,
+    )
+    if paper is None:
+        raise HTTPException(status_code=422, detail="The PDF needs a catalogue record before it can support a question.")
+    try:
+        reader = PdfReader(str(pdf_path), strict=False)
+        if reader.is_encrypted or draft.page > len(reader.pages):
+            raise HTTPException(status_code=422, detail="Select a page that exists in the chosen PDF.")
+        page_text = reader.pages[draft.page - 1].extract_text() or ""
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Could not read the selected PDF page.") from exc
+    if _normalised_passage(draft.passage_text) not in _normalised_passage(page_text):
+        raise HTTPException(
+            status_code=422,
+            detail="The evidence text was not found on that PDF page. Copy a passage from the source PDF and try again.",
+        )
+
+    record = {
+        "id": f"draft-{uuid.uuid4().hex[:12]}",
+        "query": draft.question.strip(),
+        "gold_evidence": [
+            {
+                "source_id": paper["id"],
+                "source_url": paper["source_url"],
+                "local_pdf": filename,
+                "location": f"page {draft.page}" + (f", {draft.section.strip()}" if draft.section.strip() else ""),
+                "page": draft.page,
+                "passage_text": draft.passage_text.strip(),
+            }
+        ],
+        "expected_claim": draft.expected_claim.strip(),
+        "question_review_status": "source_passage_verified_on_page; manual_question_review_pending",
+        "active_in_benchmark": False,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    with _CONTENT_LOCK:
+        QUESTION_DRAFT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        existing = QUESTION_DRAFT_PATH.read_text(encoding="utf-8").splitlines() if QUESTION_DRAFT_PATH.exists() else []
+        temp_path = QUESTION_DRAFT_PATH.with_name(f".{QUESTION_DRAFT_PATH.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temp_path.open("w", encoding="utf-8", newline="\n") as stream:
+                for line in existing:
+                    if line.strip():
+                        stream.write(line + "\n")
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp_path, QUESTION_DRAFT_PATH)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    return record
+
+
 @app.post("/api/search", response_model=SearchResponse)
 def search(request: SearchRequest) -> SearchResponse:
     rows = _catalog_rows()
-    retriever = _bm25_searcher() if request.mode == "bm25" else _hybrid_searcher()
+    retriever = _searcher_for_mode(request.mode)
     chunks = retriever.retrieve_chunks(request.question, request.k)
+    results = _format_search_sources(chunks, rows)
+    return SearchResponse(question=request.question, mode=request.mode, results=results)
+
+
+def _searcher_for_mode(mode: str):
+    return {"bm25": _bm25_searcher, "dense": _dense_searcher, "hybrid": _hybrid_searcher}[mode]()
+
+
+def _format_search_sources(chunks, rows: list[dict[str, str]]) -> list[SearchSource]:
     results = []
     for chunk in chunks:
         paper = _paper_for_source(chunk.source, rows) or {}
         results.append(
             SearchSource(
+                chunk_id=chunk.chunk_id,
                 citation=chunk.cite(),
                 title=paper.get("title", Path(chunk.source).stem),
                 authors=paper.get("authors", ""),
@@ -293,7 +708,133 @@ def search(request: SearchRequest) -> SearchResponse:
                 evidence=chunk.text,
             )
         )
-    return SearchResponse(question=request.question, mode=request.mode, results=results)
+    return results
+
+
+def _format_answer_sources(chunks) -> list[Source]:
+    rows = _catalog_rows()
+    sources = []
+    for chunk in chunks:
+        paper = _paper_for_source(chunk.source, rows) or {}
+        sources.append(
+            Source(
+                chunk_id=chunk.chunk_id,
+                citation=chunk.cite(),
+                title=paper.get("title", Path(chunk.source).stem),
+                authors=paper.get("authors", ""),
+                year=int(paper.get("year", 0) or 0),
+                section=chunk.section,
+                score=round(chunk.score, 3),
+                evidence=chunk.text,
+            )
+        )
+    return sources
+
+
+def _generation_error_detail(exc: PermanentGenerationError) -> str:
+    """Translate known Bedrock failures into safe, actionable UI guidance.
+
+    Never forward AWS exception messages: they can contain account or resource
+    identifiers. The code is from a closed set of Bedrock/API error categories.
+    """
+    if exc.code == "NO_AWS_IDENTITY":
+        return (
+            "No AWS identity is available to this app. Sign in with your approved AWS "
+            "SSO profile (for example, `aws sso login --profile <name>`) or run the app "
+            "with an authorized AWS role; then restart it. Do not paste access keys here."
+        )
+    if exc.code == "AccessDeniedException":
+        return (
+            "AWS denied answer generation. Ask the AWS administrator to allow "
+            "`bedrock:InvokeModel` for the configured Nova Lite inference profile in "
+            "the selected region, and confirm model access is enabled."
+        )
+    if exc.code in {"ResourceNotFoundException", "ValidationException"}:
+        return (
+            "Bedrock could not use the configured model. Check `BEDROCK_MODEL_ID` and "
+            "`AWS_REGION`, and confirm the inference profile is available to the account."
+        )
+    if exc.code == "INVALID_RESPONSE":
+        return "Bedrock returned an unusable answer. Try again; if it repeats, check the configured model."
+    if exc.code == "CITATION_MISSING_CITATION":
+        return (
+            "Bedrock returned an answer without recognizable [S#] citations, so the draft "
+            "was withheld. Try a more specific question or another ranking method."
+        )
+    if exc.code == "CITATION_INVALID_SOURCE_LABEL":
+        return (
+            "Bedrock cited a passage label that was not in the retrieved evidence, so the "
+            "draft was withheld. Try another ranking method or fewer passages."
+        )
+    if exc.code == "CITATION_UNCITED_SENTENCE":
+        return (
+            "At least one sentence in Bedrock's answer had no passage citation, so the draft "
+            "was withheld. Try a more specific question or another ranking method."
+        )
+    return (
+        "Bedrock rejected answer generation. Check the configured model, region, and "
+        "runtime identity permissions. The detailed AWS error is kept out of the browser response."
+    )
+
+
+@app.post("/api/answer", response_model=AskResponse)
+def cited_answer(request: SearchRequest) -> AskResponse:
+    """Generate a cited answer using the chosen retriever and its exact passages."""
+    chunks = _searcher_for_mode(request.mode).retrieve_chunks(request.question, request.k)
+    if not chunks:
+        answer = generate_from_chunks(request.question, chunks)
+    else:
+        try:
+            answer = generate_from_chunks(request.question, chunks)
+        except TransientGenerationError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Bedrock is temporarily unavailable ({exc.code}). Please try again shortly."
+                    if exc.code
+                    else "Bedrock is temporarily unavailable. Please try again shortly."
+                ),
+                headers={"Retry-After": "5"},
+            ) from exc
+        except PermanentGenerationError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=_generation_error_detail(exc),
+            ) from exc
+    return AskResponse(answer=answer, sources=_format_answer_sources(chunks))
+
+
+@app.post("/api/benchmark", response_model=BenchmarkResponse)
+def benchmark(request: BenchmarkRequest) -> BenchmarkResponse:
+    """Run the identical query through all three retrieval baselines."""
+    rows = _catalog_rows()
+    setup_began = time.perf_counter()
+    bm25 = _bm25_searcher()
+    dense = _dense_searcher()
+    hybrid = _hybrid_searcher()
+    initialization_ms = round((time.perf_counter() - setup_began) * 1000, 1)
+    systems = [
+        ("BM25", bm25),
+        ("Dense BGE-small encoder", dense),
+        ("Hybrid reciprocal-rank fusion", hybrid),
+    ]
+    output = []
+    for name, retriever in systems:
+        began = time.perf_counter()
+        chunks = retriever.retrieve_chunks(request.question, request.k)
+        elapsed = round((time.perf_counter() - began) * 1000, 1)
+        output.append(
+            BenchmarkSystem(
+                name=name,
+                latency_ms=elapsed,
+                results=_format_search_sources(chunks, rows),
+            )
+        )
+    return BenchmarkResponse(
+        question=request.question,
+        initialization_ms=initialization_ms,
+        systems=output,
+    )
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -315,29 +856,27 @@ def ask(request: AskRequest) -> AskResponse:
     except TransientGenerationError as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"{exc} Please try again in a moment.",
+            detail=(
+                f"Bedrock is temporarily unavailable ({exc.code}). Please try again in a moment."
+                if exc.code
+                else "Bedrock is temporarily unavailable. Please try again in a moment."
+            ),
             headers={"Retry-After": "5"},
         ) from exc
     except PermanentGenerationError as exc:
         # 502, not 500: this service is working and its upstream is not.
+        detail = _generation_error_detail(exc)
+        if not (exc.code or "").startswith("CITATION_"):
+            detail += " Retrying will not help until the configuration is fixed."
         raise HTTPException(
             status_code=502,
-            detail=f"{exc} Retrying will not help; this needs fixing on the server.",
+            detail=detail,
         ) from exc
 
     tracing.annotate(output=answer)
     return AskResponse(
         answer=answer,
-        sources=[
-            Source(
-                chunk_id=c.chunk_id,
-                citation=c.cite(),
-                section=c.section,
-                score=round(c.score, 3),
-                evidence=c.text,
-            )
-            for c in chunks
-        ],
+        sources=_format_answer_sources(chunks),
     )
 
 
@@ -346,58 +885,4 @@ def index() -> str:
     return _PAGE
 
 
-_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#10151d"><title>Indic Research Desk</title>
-<style>
-:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#17212c;background:#f4f6f7;font-synthesis:none}
-*{box-sizing:border-box}body{margin:0}.shell{min-height:100vh;display:grid;grid-template-columns:244px 1fr}
-aside{background:#101820;color:#dce4e7;padding:25px 16px;display:flex;flex-direction:column;gap:34px}
-.brand{display:flex;align-items:center;gap:12px;padding:0 8px}.mark{width:38px;height:38px;border-radius:12px;background:#b9ec7b;color:#142018;display:grid;place-items:center;font-weight:900}
-.brand strong{display:block;font-size:14px;letter-spacing:.02em}.brand small{color:#8f9ca4}.nav{display:grid;gap:7px}.nav button{background:transparent;border:0;color:#a9b5bb;padding:11px 12px;text-align:left;border-radius:9px;font:inherit;cursor:pointer}
-.nav button.active,.nav button:hover{background:#202c34;color:#fff}.side-note{margin-top:auto;border:1px solid #2b3942;border-radius:12px;padding:14px;font-size:12px;color:#9caab1;line-height:1.55}
-main{min-width:0;padding:30px clamp(18px,4vw,58px) 64px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:33px}
-.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#61716f;font-weight:800}.top h1{font-size:22px;margin:4px 0 0;letter-spacing:-.03em}.pill{display:inline-flex;align-items:center;gap:7px;background:#e7f4dc;color:#326021;border-radius:999px;padding:8px 11px;font-size:12px;font-weight:700}.dot{width:7px;height:7px;border-radius:50%;background:#5caa3a}
-.view{display:none}.view.active{display:block}.hero{background:#17271f;color:#f3f5ea;border-radius:20px;padding:clamp(24px,4vw,42px);position:relative;overflow:hidden}.hero:after{content:"अ";position:absolute;font-size:230px;right:4%;top:-90px;color:#ffffff08;font-weight:800;pointer-events:none}.hero h2{max-width:620px;font-size:clamp(29px,4vw,43px);line-height:1.08;letter-spacing:-.045em;margin:10px 0 13px}.hero p{color:#c1ccc0;max-width:590px;margin:0;line-height:1.6}.hero .eyebrow{color:#b9ec7b}
-.searchbox{background:#fff;border:1px solid #dce3e3;border-radius:15px;padding:10px;margin-top:21px;position:relative;z-index:1;box-shadow:0 12px 30px #07150f12}.searchrow{display:flex;gap:9px}.searchrow input{flex:1;min-width:80px;border:0;outline:0;padding:13px 12px;font:inherit;color:#17212c;background:transparent}.searchrow button,.primary{background:#b9ec7b;border:0;border-radius:10px;padding:12px 18px;color:#182419;font:inherit;font-weight:700;font-size:14px;cursor:pointer}.searchrow button:hover,.primary:hover{background:#a9de68}.answer-button{background:#fff!important;border:1px solid #dbe4dc!important;color:#355640!important}.answer-button:hover{background:#f1f7ee!important}.controls{display:flex;align-items:center;gap:10px;padding:4px 12px 8px;color:#677572;font-size:12px}.controls select{border:0;background:#f1f4f1;padding:7px 9px;border-radius:7px;color:#33403a;font:inherit}.hint{margin-left:auto}.examples{display:flex;flex-wrap:wrap;gap:8px;margin:13px 0 0}.examples button{border:1px solid #d7dfda;background:#fff;border-radius:999px;padding:8px 11px;color:#42514a;font:inherit;font-size:12px;cursor:pointer}.examples button:hover{border-color:#6b9870;color:#1e5d36}
-.statgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:20px 0 28px}.stat{background:#fff;border:1px solid #e0e6e5;border-radius:13px;padding:15px 17px}.stat span{display:block;color:#72807c;font-size:11px}.stat strong{display:block;font-size:25px;margin-top:4px;letter-spacing:-.04em}.stat em{font-style:normal;color:#799b67;font-size:11px}
-.sectionhead{display:flex;align-items:end;justify-content:space-between;gap:14px;margin:27px 0 14px}.sectionhead h2{font-size:18px;margin:0;letter-spacing:-.025em}.sectionhead p{font-size:12px;color:#77827e;margin:4px 0 0}.textlink{color:#4a7251;border:0;background:none;font:inherit;font-weight:600;font-size:12px;cursor:pointer}
-.results{display:grid;gap:12px}.answer-panel{margin:18px 0}.answer-text{white-space:pre-wrap;line-height:1.65;color:#35423d}.answer-source{margin-top:10px}.answer-source summary{font:inherit;font-size:12px;color:#53635b;cursor:pointer}.result{background:#fff;border:1px solid #e0e6e5;border-radius:14px;padding:17px 18px}.resulttop{display:flex;align-items:start;justify-content:space-between;gap:12px}.rank{width:25px;height:25px;border-radius:8px;display:grid;place-items:center;background:#edf4e7;color:#4b7543;font-size:12px;font-weight:800;flex:none}.papername{display:flex;gap:10px;align-items:start;min-width:0}.papername h3{margin:0;font-size:15px;line-height:1.35}.meta{font-size:11px;color:#75817e;margin-top:4px}.score{font-size:11px;color:#71807b;white-space:nowrap}.citation{font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:#47704d;margin:12px 0 0}.result details{margin-top:9px}.result summary{font-size:12px;color:#54645e;cursor:pointer}.result blockquote{margin:8px 0 0;padding:12px 14px;border-left:3px solid #b9ec7b;background:#f7f9f5;color:#3f4946;font-size:13px;line-height:1.65}.empty,.loading{border:1px dashed #cbd6d1;background:#fff;border-radius:13px;padding:20px;color:#687670;font-size:13px}
-.toolbar{display:flex;gap:10px;margin:14px 0}.toolbar input,.toolbar select{border:1px solid #dce3e3;background:#fff;border-radius:9px;padding:10px 12px;font:inherit;font-size:13px;color:#26332e}.toolbar input{flex:1}.papers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.paper{background:#fff;border:1px solid #e0e6e5;border-radius:13px;padding:15px}.paper h3{font-size:14px;line-height:1.4;margin:0 0 7px}.paper p{font-size:11px;line-height:1.5;color:#78827f;margin:0}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.tag{background:#eef3ee;border-radius:999px;color:#536d56;padding:4px 8px;font-size:10px}.tag.pending{background:#fff3dd;color:#936c2b}.paper a{color:#3e7149;font-size:11px;display:inline-block;margin-top:11px;text-decoration:none}
-.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.metriccard{background:#fff;border:1px solid #e0e6e5;border-radius:14px;padding:18px}.metriccard h3{margin:0 0 5px;font-size:15px}.metriccard p{margin:0;color:#76817e;font-size:12px}.bigmetric{font-size:32px;font-weight:800;letter-spacing:-.05em;margin:16px 0 8px}.bar{height:7px;border-radius:99px;background:#edf1ee;overflow:hidden}.bar i{display:block;height:100%;background:#6da66b;border-radius:99px}.metricrow{display:flex;justify-content:space-between;font-size:12px;color:#52615a;margin-top:11px}.notice{background:#fff8e9;border:1px solid #f0dfb7;border-radius:11px;padding:12px 14px;margin:15px 0;color:#7e6736;font-size:12px;line-height:1.55}.footer{border-top:1px solid #e0e6e5;margin-top:34px;padding-top:14px;color:#8a9691;font-size:11px;display:flex;justify-content:space-between;gap:14px}
-@media(max-width:850px){.shell{grid-template-columns:1fr}aside{padding:12px 15px;flex-direction:row;align-items:center;justify-content:space-between;gap:10px}.brand{padding:0}.nav{display:flex}.nav button{padding:8px}.side-note{display:none}main{padding-top:20px}.statgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:580px){.top{align-items:start;flex-direction:column}.searchrow{flex-wrap:wrap}.searchrow input{flex-basis:100%}.searchrow button{width:100%}.hint{display:none}.papers,.metrics{grid-template-columns:1fr}.footer{flex-direction:column}.hero h2{font-size:31px}}
-</style>
-</head>
-<body><div class="shell">
-<aside><div class="brand"><div class="mark">IR</div><div><strong>Indic Research Desk</strong><small>Hindi NLP paper explorer</small></div></div>
-<nav class="nav"><button class="active" data-view="explore">⌕ &nbsp; Explore papers</button><button data-view="library">▤ &nbsp; Paper library</button><button data-view="evaluation">◷ &nbsp; Evaluation</button></nav>
-<div class="side-note"><strong>Evidence-first research</strong><br>Search results show the exact indexed passage, page and paper. The local demo does not call AWS or a paid model.</div></aside>
-<main><header class="top"><div><div class="eyebrow">Research project · Hindi & Indic NLP</div><h1 id="pageTitle">Evidence search</h1></div><span class="pill"><i class="dot"></i> Local demo ready</span></header>
-<section class="view active" id="explore"><div class="hero"><div class="eyebrow">A curated research collection</div><h2>Ask a question.<br>Follow the evidence.</h2><p>Explore Hindi coreference, Indic language resources, benchmarks and methods. Every result opens the exact passage retrieved from a paper.</p>
-<div class="searchbox"><form id="searchForm"><div class="searchrow"><input id="query" placeholder="e.g. What data is used to evaluate Hindi coreference?" autocomplete="off" required><button id="searchButton">Search evidence&nbsp; →</button><button id="answerButton" type="button" class="answer-button" title="Calls Amazon Bedrock and may incur charges">Generate cited answer · AWS may charge</button></div><div class="controls"><label for="mode">Retrieval</label><select id="mode"><option value="bm25">BM25 · fast lexical</option><option value="hybrid">Hybrid · dense + lexical</option></select><label for="k">Passages</label><select id="k"><option>5</option><option>3</option><option>8</option></select><span class="hint">Evidence search is free and local</span></div></form></div>
-<div class="examples"><button data-query="How does DeepHCoref build its Hindi coreference system?">Hindi coreference systems</button><button data-query="Which languages are included in the MCECR event-coreference dataset?">Multilingual coreference</button><button data-query="Which five Hindi datasets are introduced for LLM evaluation?">Hindi benchmarks</button></div></div>
-<div class="statgrid"><div class="stat"><span>Curated records</span><strong id="catalogCount">—</strong><em>source-linked papers</em></div><div class="stat"><span>PDFs available locally</span><strong id="pdfCount">—</strong><em>rights-aware downloads</em></div><div class="stat"><span>Evaluation questions</span><strong id="evalCount">—</strong><em>source-first evidence</em></div><div class="stat"><span>Coreference focus</span><strong>Hindi</strong><em>plus Indic NLP</em></div></div>
-<div id="answerPanel" class="answer-panel" hidden></div><div class="sectionhead"><div><h2 id="resultHeading">Evidence passages</h2><p id="resultSub">Search the local index to inspect relevant paper passages.</p></div><button class="textlink" data-goto="library">Browse collection →</button></div><div id="results" class="results"><div class="empty">Enter a research question to retrieve passages from the indexed papers.</div></div></section>
-<section class="view" id="library"><div class="sectionhead"><div><h2>Paper library</h2><p>Bibliographic records, source pages and local PDF availability.</p></div></div><div class="toolbar"><input id="paperFilter" placeholder="Filter by title, author, or topic"><select id="statusFilter"><option value="all">All records</option><option value="downloaded">PDF available</option><option value="pending">Metadata / access pending</option></select></div><div id="paperGrid" class="papers"><div class="loading">Loading the catalog…</div></div></section>
-<section class="view" id="evaluation"><div class="sectionhead"><div><h2>Retrieval evaluation</h2><p>Last saved paired comparison on the active source-first evaluation set.</p></div></div><div id="metricsNotice" class="notice">Metrics are descriptive, not a claim of broad Hindi QA quality. The current set is small and needs more human-reviewed natural questions.</div><div id="metricGrid" class="metrics"><div class="loading">Loading evaluation results…</div></div></section>
-<footer class="footer"><span>Local evidence search · no AWS calls for this demo</span><span>Generated answers are a separate, optional Bedrock feature and may incur charges.</span></footer>
-</main></div>
-<script>
-const byId=id=>document.getElementById(id);let catalog=[];
-function textNode(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;n.textContent=text;return n}
-function showView(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===name));document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===name));byId('pageTitle').textContent={explore:'Evidence search',library:'Paper library',evaluation:'Retrieval evaluation'}[name]||'Evidence search'}
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>showView(b.dataset.view));document.querySelectorAll('[data-goto]').forEach(b=>b.onclick=()=>showView(b.dataset.goto));
-async function getJSON(url){const r=await fetch(url);if(!r.ok)throw Error('Request failed ('+r.status+')');return r.json()}
-async function loadOverview(){try{const d=await getJSON('/api/overview');byId('catalogCount').textContent=d.catalog_papers;byId('pdfCount').textContent=d.local_pdfs;byId('evalCount').textContent=d.evaluation_questions;renderMetrics(d.metrics)}catch(e){byId('catalogCount').textContent='—';byId('pdfCount').textContent='—'}}
-function renderMetrics(m){const root=byId('metricGrid');root.replaceChildren();if(!m||!m.metrics_are_current){root.append(textNode('div','empty','The saved retrieval snapshot belongs to an earlier 29-paper index and is marked historical. Rebuild the 45-paper showcase index and rerun evaluation before presenting current scores.'));return}
-for(const [key,label] of [['bm25','BM25 · lexical retrieval'],['hybrid','Hybrid · dense + lexical']]){const s=m.systems?.[key];if(!s)continue;const card=textNode('article','metriccard','');card.append(textNode('h3','',label),textNode('p','',m.questions+' source-first questions · '+m.corpus_papers+' local PDFs'));const big=textNode('div','bigmetric',Number(s.recall_at_10).toFixed(3));card.append(big,textNode('div','','Recall@10'));const bar=document.createElement('div');bar.className='bar';const fill=document.createElement('i');fill.style.width=Math.max(0,Math.min(100,100*s.recall_at_10))+'%';bar.append(fill);card.append(bar);for(const [k,v] of [['MRR@10',s.mrr_at_10],['nDCG@10',s.ndcg_at_10],['Median query latency',s.latency_ms+' ms']]){const row=document.createElement('div');row.className='metricrow';row.append(textNode('span','',k),textNode('strong','',typeof v==='number'?v.toFixed(3):String(v)));card.append(row)}root.append(card)}
-}
-async function runSearch(e){e.preventDefault();const button=byId('searchButton'),root=byId('results');button.disabled=true;root.replaceChildren(textNode('div','loading','Searching the local index…'));try{const r=await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:byId('query').value,mode:byId('mode').value,k:Number(byId('k').value)})});const d=await r.json();if(!r.ok)throw Error(d.detail||'Search failed');byId('resultSub').textContent=d.results.length+' passages · '+d.mode.toUpperCase()+' retrieval · evidence copied from indexed chunks';root.replaceChildren();if(!d.results.length){root.append(textNode('div','empty','No matching passages found. Try a paper title, model name, or dataset.'));return}d.results.forEach((s,i)=>{const card=document.createElement('article');card.className='result';const top=document.createElement('div');top.className='resulttop';const name=document.createElement('div');name.className='papername';name.append(textNode('span','rank',String(i+1)));const titlebox=document.createElement('div');titlebox.append(textNode('h3','',s.title));titlebox.append(textNode('div','meta',(s.authors||'Research paper')+' · '+(s.year||'year unavailable')+(s.section?' · '+s.section:'')));name.append(titlebox);top.append(name,textNode('span','score','score '+s.score.toFixed(3)));card.append(top,textNode('div','citation',s.citation));const details=document.createElement('details');const summary=textNode('summary','', 'Inspect retrieved evidence passage');const quote=textNode('blockquote','',s.evidence);details.append(summary,quote);card.append(details);root.append(card)})}catch(err){root.replaceChildren(textNode('div','empty','Search error: '+err.message))}finally{button.disabled=false}}
-async function generateAnswer(){const button=byId('answerButton'),root=byId('answerPanel');button.disabled=true;root.hidden=false;root.replaceChildren(textNode('div','loading','Generating a cited answer with Amazon Bedrock… this may incur AWS charges.'));try{const r=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:byId('query').value,k:Number(byId('k').value)})});const d=await r.json();if(!r.ok)throw Error(d.detail||'Answer generation failed');root.replaceChildren();const card=document.createElement('article');card.className='result';card.append(textNode('h3','','Grounded answer'),textNode('p','answer-text',d.answer));for(const source of d.sources){const item=document.createElement('details');item.className='answer-source';item.append(textNode('summary','',source.citation+(source.section?' · '+source.section:'')),textNode('blockquote','',source.evidence));card.append(item)}root.append(card)}catch(err){root.replaceChildren(textNode('div','empty','Answer error: '+err.message))}finally{button.disabled=false}}
-byId('searchForm').onsubmit=runSearch;byId('answerButton').onclick=generateAnswer;document.querySelectorAll('[data-query]').forEach(b=>b.onclick=()=>{byId('query').value=b.dataset.query;byId('searchForm').requestSubmit()});
-function renderPapers(){const q=byId('paperFilter').value.trim().toLowerCase(),f=byId('statusFilter').value;const root=byId('paperGrid');root.replaceChildren();const visible=catalog.filter(p=>{const match=(p.title+' '+p.authors+' '+p.topic).toLowerCase().includes(q);return match&&(f==='all'||(f==='downloaded'?p.downloaded:!p.downloaded))});if(!visible.length){root.append(textNode('div','empty','No papers match this filter.'));return}visible.forEach(p=>{const card=document.createElement('article');card.className='paper';card.append(textNode('h3','',p.title),textNode('p','',p.authors+' · '+p.year),textNode('p','',p.topic));const tags=document.createElement('div');tags.className='tags';tags.append(textNode('span',p.downloaded?'tag':'tag pending',p.downloaded?'PDF available':'PDF not local'));tags.append(textNode('span',p.status==='verified downloadable'?'tag':'tag pending',p.status));card.append(tags);const a=document.createElement('a');a.href=p.source_url;a.target='_blank';a.rel='noreferrer';a.textContent='Open bibliographic source ↗';card.append(a);root.append(card)})}
-byId('paperFilter').oninput=renderPapers;byId('statusFilter').onchange=renderPapers;loadOverview();getJSON('/api/papers').then(d=>{catalog=d;renderPapers()}).catch(e=>{byId('paperGrid').replaceChildren(textNode('div','empty',e.message))});
-</script></body></html>"""
+_PAGE = (ROOT / "api" / "templates" / "index.html").read_text(encoding="utf-8")

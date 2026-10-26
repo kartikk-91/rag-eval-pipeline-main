@@ -19,9 +19,17 @@ class GenerationError(RuntimeError):
 class TransientGenerationError(GenerationError):
     """Throttling, timeout, or a service-side fault. Retrying may succeed."""
 
+    def __init__(self, message: str, *, code: str | None = None):
+        super().__init__(message)
+        self.code = code
+
 
 class PermanentGenerationError(GenerationError):
     """Bad request, missing permission, model not enabled. Retrying will not help."""
+
+    def __init__(self, message: str, *, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 # Bedrock error codes that mean "try again". Everything else is treated as

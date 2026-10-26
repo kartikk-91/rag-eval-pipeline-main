@@ -12,13 +12,69 @@ a Qdrant container locally and a different endpoint in deployment.
 import os
 
 COLLECTION = os.environ.get("RAG_COLLECTION", "hindi_indic_documents")
-# The previous English-only embedding default performed poorly for Hindi/Devanagari.
-# This multilingual model supports Hindi and has the same 384-dimensional output;
-# the collection name changes to prevent accidental reuse of the old vectors.
-MODEL_NAME = os.environ.get(
-    "RAG_EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-)
-VECTOR_SIZE = 384  # multilingual MiniLM output size; update with the model if changed
+# The indexed literature and current evaluation queries are English. Use the
+# retrieval-oriented BGE-small model specified in the submitted FPA. For a Hindi
+# query benchmark, configure a multilingual retrieval model and rebuild the index.
+MODEL_NAME = os.environ.get("RAG_EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+VECTOR_SIZE = 384  # BGE-small output dimension; update with the model if changed
+EMBEDDING_MAX_SEQ_LENGTH = int(os.environ.get("RAG_EMBEDDING_MAX_SEQ_LENGTH", "512"))
+
+
+def configure_embedding_model(model):
+    """Apply and validate the shared token window on an initialized encoder."""
+    if EMBEDDING_MAX_SEQ_LENGTH < 64:
+        raise ValueError("RAG_EMBEDDING_MAX_SEQ_LENGTH must be at least 64 tokens.")
+    encoder = model[0]
+    backbone = getattr(encoder, "auto_model", None)
+    config = getattr(backbone, "config", None)
+    position_limit = getattr(config, "max_position_embeddings", None)
+    if position_limit is not None and EMBEDDING_MAX_SEQ_LENGTH > position_limit:
+        raise ValueError(
+            f"RAG_EMBEDDING_MAX_SEQ_LENGTH={EMBEDDING_MAX_SEQ_LENGTH} exceeds "
+            f"{MODEL_NAME}'s {position_limit}-position encoder limit."
+        )
+    model.max_seq_length = EMBEDDING_MAX_SEQ_LENGTH
+    return model
+
+
+def validate_embedding_inputs(model, texts: list[str], batch_size: int = 128) -> int:
+    """Fail before indexing if any passage would be silently truncated."""
+    tokenizer = model[0].tokenizer
+    max_length = model.max_seq_length
+    too_long: list[tuple[int, int]] = []
+    longest = 0
+    for start in range(0, len(texts), batch_size):
+        encoded = tokenizer(
+            texts[start : start + batch_size],
+            add_special_tokens=True,
+            truncation=False,
+            padding=False,
+        )["input_ids"]
+        for offset, tokens in enumerate(encoded):
+            longest = max(longest, len(tokens))
+            if len(tokens) > max_length:
+                too_long.append((start + offset, len(tokens)))
+    if too_long:
+        examples = ", ".join(f"#{i}={length}" for i, length in too_long[:5])
+        raise ValueError(
+            f"{len(too_long)} passage(s) exceed the {max_length}-token embedding window "
+            f"and would be truncated (examples: {examples}). Reduce chunk size or "
+            "increase RAG_EMBEDDING_MAX_SEQ_LENGTH within the model's position limit."
+        )
+    return longest
+
+
+def load_embedding_model():
+    """Load the configured sentence encoder without silently truncating passages.
+
+    The current encoder's saved Sentence Transformers config defaults to 128
+    tokens while its backbone supports 512. The old 2,000-character chunks were
+    much longer than that and a large tail never contributed to each vector. Use
+    one validated sequence-length setting for indexing and query retrieval.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    return configure_embedding_model(SentenceTransformer(MODEL_NAME))
 
 # Region for Bedrock and S3. Lambda sets AWS_REGION in its runtime environment, so
 # the deployed function follows wherever Terraform put it; locally this falls back

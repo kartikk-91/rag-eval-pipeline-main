@@ -5,8 +5,10 @@ visitor get a readable status or a bare 500? Before this file the answer was 500
 for every case, including ones where retrying a moment later would have worked.
 """
 
+from types import SimpleNamespace
+
 import pytest
-from botocore.exceptions import ClientError, ConnectTimeoutError, ReadTimeoutError
+from botocore.exceptions import ClientError, ConnectTimeoutError, NoCredentialsError, ReadTimeoutError
 from fastapi.testclient import TestClient
 
 from rag.errors import PermanentGenerationError, TransientGenerationError
@@ -36,9 +38,11 @@ class _Bedrock:
         self._raises = raises
         self._response = response
         self.calls = 0
+        self.last_request = None
 
-    def converse(self, **_kwargs):
+    def converse(self, **kwargs):
         self.calls += 1
+        self.last_request = kwargs
         if self._raises is not None:
             raise self._raises
         return self._response
@@ -109,6 +113,62 @@ def test_malformed_success_is_permanent(bedrock):
         generate_from_chunks("q", [_chunk()])
 
 
+def test_converse_success_returns_inline_cited_answer_from_mocked_bedrock(bedrock):
+    from rag.config import BEDROCK_MODEL_ID
+    from rag.generate import generate_from_chunks
+
+    response = {
+        "output": {
+            "message": {"content": [{"text": "Kuhn-Munkres finds the optimal alignment [S1]."}]}
+        }
+    }
+    stub = bedrock(_Bedrock(response=response))
+    answer = generate_from_chunks("which algorithm aligns entities?", [_chunk()])
+
+    assert answer == "Kuhn-Munkres finds the optimal alignment [S1]."
+    assert stub.calls == 1
+    assert stub.last_request["modelId"] == BEDROCK_MODEL_ID
+    assert stub.last_request["messages"][0]["content"][0]["text"].startswith("Context:\n[S1]")
+
+
+def test_uncited_bedrock_answer_fails_closed(bedrock):
+    from rag.generate import generate_from_chunks
+
+    response = {"output": {"message": {"content": [{"text": "Kuhn-Munkres aligns entities."}]}}}
+    bedrock(_Bedrock(response=response))
+    with pytest.raises(PermanentGenerationError) as error:
+        generate_from_chunks("which algorithm aligns entities?", [_chunk()])
+    assert error.value.code == "CITATION_MISSING_CITATION"
+
+
+def test_missing_aws_identity_is_a_configuration_error_not_a_retryable_outage(bedrock):
+    from rag.generate import generate_from_chunks
+
+    bedrock(_Bedrock(raises=NoCredentialsError()))
+    with pytest.raises(PermanentGenerationError, match="identity is configured"):
+        generate_from_chunks("q", [_chunk()])
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("NO_AWS_IDENTITY", "aws sso login"),
+        ("AccessDeniedException", "bedrock:InvokeModel"),
+        ("ResourceNotFoundException", "BEDROCK_MODEL_ID"),
+        ("ValidationException", "AWS_REGION"),
+        ("CITATION_MISSING_CITATION", "recognizable [S#] citations"),
+        ("CITATION_INVALID_SOURCE_LABEL", "not in the retrieved evidence"),
+        ("CITATION_UNCITED_SENTENCE", "no passage citation"),
+    ],
+)
+def test_bedrock_configuration_failures_have_safe_actionable_ui_guidance(code, expected):
+    from api.main import _generation_error_detail
+
+    detail = _generation_error_detail(PermanentGenerationError("private AWS detail", code=code))
+    assert expected in detail
+    assert "private AWS detail" not in detail
+
+
 def test_no_chunks_answers_without_calling_the_model(bedrock):
     # Grounding is the project's claim; asking the model to answer from an empty
     # context invites it to invent one.
@@ -133,6 +193,18 @@ def api(monkeypatch):
     # tracing configuration; tracing behavior is covered separately in test_tracing.
     monkeypatch.setattr(tracing, "client", lambda: None)
     monkeypatch.setattr(gen, "retrieve_chunks", lambda q, k: [_chunk()])
+    import api.main as api_main
+
+    monkeypatch.setattr(
+        api_main,
+        "answer_question",
+        lambda question, k: (gen.generate_from_chunks(question, [_chunk()]), [_chunk()]),
+    )
+    monkeypatch.setattr(
+        api_main,
+        "_searcher_for_mode",
+        lambda _mode: SimpleNamespace(retrieve_chunks=lambda _q, _k: [_chunk()]),
+    )
     from api.main import app
 
     return TestClient(app, raise_server_exceptions=False)
@@ -152,7 +224,47 @@ def test_permission_failure_surfaces_as_502_not_500(api, bedrock):
     bedrock(_Bedrock(raises=_client_error("AccessDeniedException")))
     r = api.post("/ask", json={"question": "which algorithm aligns entities?"})
     assert r.status_code == 502
+    assert "bedrock:InvokeModel" in r.json()["detail"]
     assert "will not help" in r.json()["detail"]
+
+
+def test_cited_answer_api_explains_missing_identity_without_exposing_aws_details(monkeypatch, bedrock):
+    from fastapi import HTTPException
+
+    import api.main as api_main
+
+    monkeypatch.setattr(
+        api_main,
+        "_searcher_for_mode",
+        lambda _mode: SimpleNamespace(retrieve_chunks=lambda _q, _k: [_chunk()]),
+    )
+    bedrock(_Bedrock(raises=NoCredentialsError()))
+    request = api_main.SearchRequest(question="which algorithm aligns entities?", mode="hybrid", k=3)
+    with pytest.raises(HTTPException) as error:
+        api_main.cited_answer(request)
+    assert error.value.status_code == 502
+    assert "AWS identity" in error.value.detail
+    assert "aws sso login" in error.value.detail
+    assert "credentials" not in error.value.detail.lower()
+
+
+def test_cited_answer_api_explains_invalid_region_or_model(monkeypatch, bedrock):
+    from fastapi import HTTPException
+
+    import api.main as api_main
+
+    monkeypatch.setattr(
+        api_main,
+        "_searcher_for_mode",
+        lambda _mode: SimpleNamespace(retrieve_chunks=lambda _q, _k: [_chunk()]),
+    )
+    bedrock(_Bedrock(raises=_client_error("ResourceNotFoundException")))
+    request = api_main.SearchRequest(question="which algorithm aligns entities?", mode="hybrid", k=3)
+    with pytest.raises(HTTPException) as error:
+        api_main.cited_answer(request)
+    assert error.value.status_code == 502
+    assert "BEDROCK_MODEL_ID" in error.value.detail
+    assert "AWS_REGION" in error.value.detail
 
 
 def test_a_working_request_is_unaffected(api, bedrock):

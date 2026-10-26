@@ -14,4 +14,4 @@ def test_every_example_question_comes_from_the_measured_eval_set():
     assert len(examples) == 3
     assert not [q for q in examples if q not in measured]
     assert 'id="answerButton"' in _PAGE
-    assert "may incur charges" in _PAGE
+    assert "may incur charges" not in _PAGE

@@ -15,6 +15,7 @@ dependencies = [
     "qdrant-client",
     "boto3",
     "fastapi",
+    "python-multipart",
     "uvicorn",
     # The Lambda runtime talks to a client that polls for events, not to an HTTP
     # server. Without this the container starts uvicorn, Lambda waits for a runtime
@@ -33,6 +34,9 @@ agent = ["langgraph"]
 
 [tool.setuptools]
 packages = ["rag", "api", "agent", "evaluation", "mcp_server"]
+
+[tool.setuptools.package-data]
+api = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
